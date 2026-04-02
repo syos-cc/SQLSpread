@@ -898,7 +898,7 @@
     <span id="testsBadge"></span>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+  <script src="./sql-wasm.js"></script>
   <script>
     let SQL = null;
     let db = null;
@@ -1744,7 +1744,7 @@
     async function initSqlJsEngine() {
       if (SQL) return SQL;
       SQL = await initSqlJs({
-        locateFile: (file) => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${file}`
+        locateFile: (file) => `./${file}`
       });
       return SQL;
     }

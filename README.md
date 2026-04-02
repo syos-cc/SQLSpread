@@ -182,7 +182,6 @@ Runs automatically on startup.
 
 - Based on sql.js (SQLite WebAssembly)
 - Runs in browser only
-- No installation required
 
 ---
 
@@ -207,4 +206,5 @@ SQLSpread is suitable for:
 
 ---
 - Source : https://github.com/syos-cc/SQLSpread.git
+- License : GPLv3 - https://github.com/syos-cc/SQLSpread/blob/main/LICENSE
 - Note : This code was developed with support from AI tools.
