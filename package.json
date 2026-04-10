@@ -1,0 +1,28 @@
+{
+  "name": "sqlspread",
+  "version": "1.0.2",
+  "description": "sqlite db like spreadsheet",
+  "keywords": [
+    "sqlite",
+    "spreadsheet"
+  ],
+  "homepage": "https://github.com/syos-cc/SQLSpread#readme",
+  "bugs": {
+    "url": "https://github.com/syos-cc/SQLSpread/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/syos-cc/SQLSpread.git"
+  },
+  "license": "GPL-3.0",
+  "author": "David Kuderer",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "electron": "^41.2.0"
+  }
+}
