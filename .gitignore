@@ -1,7 +1,7 @@
 *.sqlite
 dist/*
 !dist/.gitkeep
-**/.DS_Store
+.DS_Store
 
 # ---> Node
 # Logs
