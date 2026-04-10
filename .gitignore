@@ -1,5 +1,6 @@
-build.sh
 *.sqlite
+dist/*
+!dist/.gitkeep
 
 # ---> Node
 # Logs
