@@ -903,6 +903,8 @@
     let SQL = null;
     let db = null;
     let dbFilename = 'database.sqlite';
+    let dbFilePath = null;
+    let dbLoadedFromFilesystem = false;
     let schemaItems = [];
     let activeTab = null;
     let pendingDownloadUrl = null;
@@ -966,6 +968,21 @@
 
     function setStatus(msg) {
       statusEl.textContent = msg;
+    }
+
+    function hasNativeFsBridge() {
+      return !!(window.sqlspreadFS && typeof window.sqlspreadFS.openDatabase === 'function' && typeof window.sqlspreadFS.saveDatabase === 'function');
+    }
+
+    function getPreferredDatabaseName(name) {
+      const base = String(name || dbFilename || 'database.sqlite').trim() || 'database.sqlite';
+      return /\.(sqlite|sqlite3|db|db3)$/i.test(base) ? base : `${base}.sqlite`;
+    }
+
+    function setCurrentDatabaseOrigin({ filename, filePath = null, filesystemBacked = false } = {}) {
+      dbFilename = getPreferredDatabaseName(filename || dbFilename);
+      dbFilePath = filePath || null;
+      dbLoadedFromFilesystem = !!filesystemBacked;
     }
 
     function showModalError(targetEl, message) {
@@ -2365,12 +2382,8 @@
       }
     }
 
-    async function loadDatabase(file) {
-      releaseExportUrl();
-      await initSqlJsEngine();
-      const buf = await file.arrayBuffer();
-      db = new SQL.Database(new Uint8Array(buf));
-      dbFilename = file.name || 'database.sqlite';
+    function finalizeDatabaseLoad({ filename, filePath = null, filesystemBacked = false } = {}) {
+      setCurrentDatabaseOrigin({ filename, filePath, filesystemBacked });
       schemaItems = getObjects();
       activeTab = schemaItems[0]?.name || null;
       currentSort = { column: null, direction: null };
@@ -2381,22 +2394,67 @@
       saveBtn.disabled = false;
       codeBtn.disabled = false;
       createBtn.disabled = true;
-      setStatus('Ready');
+      setStatus(filesystemBacked ? `Ready: ${dbFilename}` : 'Ready');
       if (!schemaItems.length) {
         metaEl.innerHTML = '<span class="pill">No tables or views found</span>';
         gridWrapEl.innerHTML = '<div class="empty">The database contains no displayable tables or views.</div>';
       }
     }
 
-    function saveDatabase() {
+    async function loadDatabase(file) {
+      releaseExportUrl();
+      await initSqlJsEngine();
+      const buf = await file.arrayBuffer();
+      db = new SQL.Database(new Uint8Array(buf));
+      finalizeDatabaseLoad({ filename: file.name || 'database.sqlite', filesystemBacked: false });
+    }
+
+    async function loadDatabaseFromBuffer(buffer, options = {}) {
+      releaseExportUrl();
+      await initSqlJsEngine();
+      const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+      db = new SQL.Database(bytes);
+      finalizeDatabaseLoad(options);
+    }
+
+    async function openDatabaseFromFilesystem() {
+      if (!hasNativeFsBridge()) return false;
+      const result = await window.sqlspreadFS.openDatabase();
+      if (!result || result.canceled) return true;
+      if (!result.data) throw new Error('No file data returned from filesystem bridge');
+      await loadDatabaseFromBuffer(result.data, {
+        filename: result.name || result.filename || 'database.sqlite',
+        filePath: result.path || null,
+        filesystemBacked: true
+      });
+      return true;
+    }
+
+    async function saveDatabase() {
       if (!db) return;
       const binary = db.export();
+      const filename = getPreferredDatabaseName(dbFilename || 'database.sqlite');
+
+      if (hasNativeFsBridge()) {
+        const result = await window.sqlspreadFS.saveDatabase({
+          data: Array.from(binary),
+          filename,
+          path: dbFilePath || null
+        });
+        if (!result || result.canceled) return;
+        setCurrentDatabaseOrigin({
+          filename: result.name || filename,
+          filePath: result.path || dbFilePath,
+          filesystemBacked: true
+        });
+        setStatus(`Saved: ${dbFilename}`);
+        return;
+      }
+
       const blob = new Blob([binary], { type: 'application/octet-stream' });
-      let filename = dbFilename || 'database.sqlite';
-      if (!/\.(sqlite|sqlite3|db|db3)$/i.test(filename)) filename = `${filename}.sqlite`;
-      const result = prepareDownloadLink(blob, filename);
+      const download = prepareDownloadLink(blob, filename);
       const a = document.createElement('a');
-      a.href = result.url;
+      a.href = download.url;
       a.download = filename;
       document.body.appendChild(a);
       a.click();
@@ -2679,6 +2737,8 @@
       } catch (err) {
         setStatus('Error while loading');
         alert('The database could not be loaded: ' + (err.message || String(err)));
+      } finally {
+        dbFileInput.value = '';
       }
     });
 
@@ -2786,6 +2846,28 @@
         }
       }
     });
+
+    if (hasNativeFsBridge()) {
+      const fileWrap = document.querySelector('.file-input-wrap');
+      const fileBtn = document.querySelector('.file-input-btn');
+      if (fileWrap && fileBtn) {
+        fileBtn.textContent = 'Open database';
+        dbFileInput.disabled = true;
+        dbFileInput.style.pointerEvents = 'none';
+        fileWrap.addEventListener('click', async (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          try {
+            setStatus('Opening database ...');
+            await openDatabaseFromFilesystem();
+          } catch (err) {
+            setStatus('Error while loading');
+            alert('The database could not be loaded: ' + (err.message || String(err)));
+          }
+        });
+      }
+      saveBtn.textContent = 'Save file';
+    }
 
     createBtn.disabled = false;
     codeBtn.disabled = true;
