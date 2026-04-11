@@ -1,145 +1,37 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SQLSpread</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="topbar">
-    <div class="topbar-left">
-      <label class="file-input-wrap">
-        <span class="file-input-btn">Select file</span>
-        <input id="dbFile" class="file-input-native" type="file" accept=".db,.sqlite,.sqlite3,.db3" />
-      </label>
-      <button id="createBtn">Create database</button>
-      <button id="codeBtn" disabled>SQL</button>
-      <button id="saveBtn" disabled>Save database</button>
-      <div id="bulkActionWrap" class="bulk-action-wrap">
-        <select id="bulkActionSelect" class="bulk-action-select">
-          <option value="delete">Delete</option>
-        </select>
-        <button id="bulkActionBtn" class="bulk-action-btn" type="button">Apply</button>
-      </div>
-      <div id="inlineError" class="inline-error" aria-live="polite"></div>
-      <div class="status" id="status">No database loaded</div>
-    </div>
+    <button class="btn" id="openBtn" type="button">Datei öffnen</button>
+    <label for="dbFile" class="file-label">SQLite-Datei auswählen</label>
+    <input type="file" id="dbFile" accept=".sqlite,.db,.sqlite3,.db3,.bin,.dat" />
+    <button class="btn" id="saveBtn" type="button">Datenbank speichern</button>
+<div id="status" class="status">Keine Datei geladen</div>
   </div>
 
-  <div class="tabs" id="tabs"></div>
-
-  <div class="workspace">
-    <div class="meta" id="meta">
-      <span class="pill">Nothing loaded yet</span>
-    </div>
-    <div class="grid-wrap" id="gridWrap">
-      <div class="empty" id="initialEmptyState">
-        Select a SQLite file. Tables and views will appear as tabs.<br>
-        Tables are editable, views are read-only.
-      </div>
-    </div>
+  <div class="formula-bar">
+    <div class="name-box" id="nameBox">-</div>
+    <div class="formula-input" id="formulaBox">-</div>
   </div>
 
-  <div id="confirmModal" class="modal-backdrop" aria-hidden="true">
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
-      <div id="confirmModalTitle" class="modal-title">Delete object</div>
-      <div id="confirmModalText" class="modal-text">This object will be deleted.</div>
-      <div class="modal-actions">
-        <button id="confirmCancelBtn" class="modal-cancel-btn" type="button">Cancel</button>
-        <button id="confirmOkBtn" class="modal-ok-btn" type="button">OK</button>
+  <div class="main">
+    <div class="sheet-wrap" id="sheetWrap">
+      <div class="empty">
+        SQLite-Datei laden. Erwartet werden die Tabellen <code>data</code>, <code>general_tabs</code>,
+        <code>general_rows</code> und <code>general_columns</code>.
+        <div class="muted">Tabs = <code>z</code>, Spalten = <code>x</code>, Zeilen = <code>y</code>.</div>
       </div>
     </div>
+    <div class="tabs" id="tabs"></div>
   </div>
 
-  <div id="createDbModal" class="modal-backdrop" aria-hidden="true">
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="createDbModalTitle">
-      <div id="createDbModalTitle" class="modal-title">Create database</div>
-      <div class="modal-text">Enter a database name.</div>
-      <input id="createDbNameInput" type="text" class="bulk-action-select" style="width:100%; margin-bottom:16px;" placeholder="database" />
-      <div class="modal-actions">
-        <button id="createDbCancelBtn" class="modal-cancel-btn" type="button">Cancel</button>
-        <button id="createDbConfirmBtn" class="modal-ok-btn" type="button">Create</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="createTableModal" class="modal-backdrop" aria-hidden="true">
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="createTableModalTitle" style="width:min(980px, 100%);">
-      <div id="createTableModalTitle" class="modal-title">Create object</div>
-      <div class="modal-text">Create a table or a view.</div>
-      <div id="createTableModalError" class="modal-inline-error" aria-live="polite"></div>
-      <div class="create-type-wrap">
-        <label for="createObjectTypeSelect">Type</label>
-        <select id="createObjectTypeSelect" class="bulk-action-select">
-          <option value="table">table</option>
-          <option value="view">view</option>
-        </select>
-      </div>
-      <div id="createTableSection" class="create-table-section visible">
-      <input id="createTableNameInput" type="text" class="bulk-action-select" style="width:100%; margin-bottom:12px;" placeholder="table_name" />
-      <div style="display:grid; grid-template-columns:1.15fr 1fr 1fr 1fr 0.55fr 0.55fr 0.8fr auto; gap:8px; margin-bottom:8px; color:var(--muted); font-size:12px;">
-        <div>Name</div>
-        <div>Type</div>
-        <div>Default</div>
-        <div>Note</div>
-        <div>PK</div>
-        <div>Unique</div>
-        <div>Auto increment</div>
-        <div></div>
-      </div>
-      <div id="createTableColumnsWrap" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;"></div>
-      <button id="addColumnRowBtn" type="button" class="tab-xls-btn" style="align-self:flex-start; margin-bottom:16px;">+ Column</button>
-      </div>
-      <div id="createViewSection" class="create-view-section">
-        <input id="createViewNameInput" type="text" class="bulk-action-select" style="width:100%; margin-bottom:12px;" placeholder="view_name" />
-        <textarea id="createViewSqlInput" class="sql-large-input" spellcheck="false" placeholder="SELECT * FROM your_table"></textarea>
-      </div>
-      <div class="modal-actions">
-        <button id="createTableCancelBtn" class="modal-cancel-btn" type="button">Cancel</button>
-        <button id="createTableConfirmBtn" class="modal-ok-btn" type="button">Create</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="insertRowModal" class="modal-backdrop" aria-hidden="true">
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="insertRowModalTitle" style="width:min(760px, 100%);">
-      <div id="insertRowModalTitle" class="modal-title">Add row</div>
-      <div class="modal-text">Enter values for the new row.</div>
-      <div id="insertRowModalError" class="modal-inline-error" aria-live="polite"></div>
-      <div id="insertRowForm" class="insert-row-form"></div>
-      <div class="modal-actions">
-        <button id="insertRowCancelBtn" class="modal-cancel-btn" type="button">Cancel</button>
-        <button id="insertRowConfirmBtn" class="insert-row-btn" type="button">Insert</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="sqlShellModal" class="modal-backdrop" aria-hidden="true">
-    <div class="modal-card sql-shell-modal-card" role="dialog" aria-modal="true" aria-labelledby="sqlShellTitle">
-      <div class="sql-shell-header">
-        <div id="sqlShellTitle" class="sql-shell-title">SQL Console</div>
-        <button id="sqlShellCloseBtn" class="modal-cancel-btn" type="button">Close</button>
-      </div>
-      <div class="sql-shell-body">
-        <div id="sqlShellOutput" class="sql-shell-output"></div>
-        <div class="sql-shell-input-row">
-          <textarea id="sqlShellInput" class="sql-shell-input" spellcheck="false" placeholder="SELECT name FROM sqlite_master;"></textarea>
-          <div class="sql-shell-side">
-            <button id="sqlShellRunBtn" class="sql-shell-btn" type="button">Run</button>
-            <button id="sqlShellClearBtn" class="sql-shell-btn modal-cancel-btn" type="button">Clear</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="footer">
-    One-click editing like a spreadsheet. Enter saves, Esc cancels, Tab moves to the next cell.
-    <span id="testsBadge"></span>
-  </div>
-
-  <script src="./sql-wasm.js"></script>
-  <script src="./sqlspread.js"></script>
+  <script src="sql-wasm.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
