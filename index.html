@@ -336,6 +336,41 @@
       transform: rotate(45deg);
     }
 
+    .json-dropdown-cell {
+      padding: 0 !important;
+    }
+
+    .cell-dropdown {
+      width: 100%;
+      height: 100%;
+      min-height: 22px;
+      border: none;
+      outline: none;
+      margin: 0;
+      padding: 0 20px 0 6px;
+      background: #fff;
+      font: inherit;
+      color: inherit;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-image:
+        linear-gradient(45deg, transparent 50%, #666 50%),
+        linear-gradient(135deg, #666 50%, transparent 50%);
+      background-position:
+        calc(100% - 12px) calc(50% - 2px),
+        calc(100% - 8px) calc(50% - 2px);
+      background-size: 4px 4px, 4px 4px;
+      background-repeat: no-repeat;
+    }
+
+    .cell-dropdown:disabled {
+      background-color: #fff;
+      color: #000;
+      opacity: 1;
+      cursor: default;
+    }
+
     td[data-editable="true"] {
       cursor: text;
     }
@@ -542,6 +577,34 @@
              (typeof value === 'string' && value.toLowerCase() === 'false');
     }
 
+    function parseJsonValue(cell) {
+      if (!cell || cell.value_json == null || cell.value_json === '') return null;
+      try {
+        return typeof cell.value_json === 'string' ? JSON.parse(cell.value_json) : cell.value_json;
+      } catch {
+        return null;
+      }
+    }
+
+    function isJsonDropdownCell(cell) {
+      const obj = parseJsonValue(cell);
+      return !!(obj && typeof obj === 'object' && String(obj.type || '').toLowerCase() === 'dropdown' && Array.isArray(obj.options));
+    }
+
+    function getJsonDropdownSelected(cell) {
+      const obj = parseJsonValue(cell);
+      if (!obj || typeof obj !== 'object') return '';
+      if (obj.selected !== undefined && obj.selected !== null) return String(obj.selected);
+      if (obj.selectd !== undefined && obj.selectd !== null) return String(obj.selectd);
+      return '';
+    }
+
+    function getJsonDropdownOptions(cell) {
+      const obj = parseJsonValue(cell);
+      if (!obj || !Array.isArray(obj.options)) return [''];
+      return obj.options.map(v => String(v));
+    }
+
     function isCellEditable(cell = null, rowDef = {}, colDef = {}) {
       const resolvedUserSelect = withDefault(
         cell?.user_select,
@@ -557,6 +620,10 @@
       if (!cell) return '';
       const type = String(cell.value_type || 'TEXT').toUpperCase();
 
+      if (type === 'JSON' && isJsonDropdownCell(cell)) {
+        return getJsonDropdownSelected(cell);
+      }
+
       switch (type) {
         case 'INTEGER':
           return cell.value_integer ?? '';
@@ -568,6 +635,8 @@
           return cell.value_blob == null ? '' : '[BLOB]';
         case 'NULL':
           return '';
+        case 'JSON':
+          return cell.value_json ?? '';
         case 'TEXT':
         default:
           return cell.value_text ?? '';
@@ -695,7 +764,7 @@
         cells: queryTable(database, `
           SELECT
             x, y, z,
-            value_type, value_text, value_integer, value_real, value_blob, value_boolean,
+            value_type, value_text, value_integer, value_real, value_blob, value_boolean, value_json,
             padding, border, border_top, border_right, border_bottom, border_left,
             background_color, box_shadow, text_align, vertical_align,
             font, font_weight, color, white_space, overflow, text_overflow,
@@ -802,6 +871,31 @@
         throw new Error('BLOB-Zellen werden noch nicht unterstützt.');
       }
 
+      if (valueType === 'JSON' && isJsonDropdownCell(currentCell)) {
+        const obj = parseJsonValue(currentCell) || {};
+        const options = Array.isArray(obj.options) ? obj.options.map(v => String(v)) : [''];
+        const selectedValue = String(rawValue ?? '');
+
+        if (!options.includes(selectedValue)) {
+          throw new Error('Wert ist nicht in den Dropdown-Optionen enthalten.');
+        }
+
+        const newObj = {
+          ...obj,
+          type: 'dropdown',
+          selected: selectedValue,
+          options
+        };
+
+        db.run(
+          `UPDATE data
+           SET value_json = ?
+           WHERE z = ? AND x = ? AND y = ?`,
+          [JSON.stringify(newObj), sheetName, col, rowNum]
+        );
+        return;
+      }
+
       if (valueType === 'BOOLEAN') {
         const boolValue = rawValue === true || rawValue === 1 ? 1 : 0;
         db.run(
@@ -856,6 +950,16 @@
             [parsed, sheetName, col, rowNum]
           );
         }
+        return;
+      }
+
+      if (valueType === 'JSON') {
+        db.run(
+          `UPDATE data
+           SET value_json = ?
+           WHERE z = ? AND x = ? AND y = ?`,
+          [rawValue, sheetName, col, rowNum]
+        );
         return;
       }
 
@@ -960,6 +1064,25 @@
       }
     }
 
+    async function updateJsonDropdownCell(td, selectedValue) {
+      if (!td || td.dataset.editable !== 'true') return;
+
+      const cellRef = td.dataset.cell || '';
+      const meta = getCellRecord(currentSheet, cellRef);
+      if (!meta || !meta.cell) return;
+
+      try {
+        setCellValueInDb(currentSheet, meta.col, meta.rowNum, selectedValue);
+        await reloadWorkbookFromDb(`${currentDbName} geändert`);
+        const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
+        if (updatedTd) selectCell(updatedTd);
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || String(error), true);
+        await reloadWorkbookFromDb();
+      }
+    }
+
     function activateCellEditor(td) {
       if (!td || td.dataset.editable !== 'true') return;
       if (td.dataset.editing === 'true') return;
@@ -969,10 +1092,21 @@
       if (!meta || !meta.cell) return;
 
       const valueType = String(meta.cell.value_type || 'TEXT').toUpperCase();
+
       if (valueType === 'BOOLEAN') {
         toggleBooleanCell(td);
         return;
       }
+
+      if (valueType === 'JSON' && isJsonDropdownCell(meta.cell)) {
+        const select = td.querySelector('select.cell-dropdown');
+        if (select && !select.disabled) {
+          select.focus();
+          select.size = 1;
+        }
+        return;
+      }
+
       if (valueType === 'BLOB') return;
 
       td.dataset.editing = 'true';
@@ -1052,6 +1186,8 @@
           const boolValue =
             raw === 'true' || raw === '1' || raw === 'ja' || raw === 'yes' || raw === 'on';
           setCellValueInDb(currentSheet, meta.col, meta.rowNum, boolValue);
+        } else if (valueType === 'JSON' && isJsonDropdownCell(meta.cell)) {
+          setCellValueInDb(currentSheet, meta.col, meta.rowNum, formulaBox.value);
         } else {
           setCellValueInDb(currentSheet, meta.col, meta.rowNum, formulaBox.value);
         }
@@ -1279,11 +1415,27 @@
           const editable = isCellEditable(cell, rowDef, colDef);
 
           const isBooleanCell = cell && String(cell.value_type || '').toUpperCase() === 'BOOLEAN';
-          const renderedValue = isBooleanCell
-            ? `<span class="bool-checkbox${value === true ? ' checked' : ''}"></span>`
-            : escapeHtml(value);
+          const isDropdownCell = cell && String(cell.value_type || '').toUpperCase() === 'JSON' && isJsonDropdownCell(cell);
 
-          const tdClass = isBooleanCell ? 'bool-cell' : '';
+          let tdClass = '';
+          let renderedValue = escapeHtml(value);
+
+          if (isBooleanCell) {
+            tdClass = 'bool-cell';
+            renderedValue = `<span class="bool-checkbox${value === true ? ' checked' : ''}"></span>`;
+          } else if (isDropdownCell) {
+            tdClass = 'json-dropdown-cell';
+            const options = getJsonDropdownOptions(cell);
+            const selected = getJsonDropdownSelected(cell);
+
+            renderedValue = `<select class="cell-dropdown" data-dropdown-cell="${escapeHtml(cellRef)}" ${editable ? '' : 'disabled'}>` +
+              options.map(option => {
+                const sel = option === selected ? ' selected' : '';
+                return `<option value="${escapeHtml(option)}"${sel}>${escapeHtml(option)}</option>`;
+              }).join('') +
+              `</select>`;
+          }
+
           const classAttr = tdClass ? ` class="${tdClass}"` : '';
 
           html += `<td${classAttr} data-cell="${escapeHtml(cellRef)}" data-value="${escapeHtml(String(value))}" data-editable="${editable ? 'true' : 'false'}"${title}${style ? ` style="${escapeHtml(style)}"` : ''}>${renderedValue}</td>`;
@@ -1298,6 +1450,20 @@
       for (const td of sheetWrapEl.querySelectorAll('td[data-cell]')) {
         td.addEventListener('click', () => selectCell(td));
         td.addEventListener('dblclick', () => activateCellEditor(td));
+      }
+
+      for (const select of sheetWrapEl.querySelectorAll('select.cell-dropdown[data-dropdown-cell]')) {
+        select.addEventListener('click', (event) => {
+          event.stopPropagation();
+          const td = select.closest('td[data-cell]');
+          if (td) selectCell(td);
+        });
+
+        select.addEventListener('change', async () => {
+          const td = select.closest('td[data-cell]');
+          if (!td) return;
+          await updateJsonDropdownCell(td, select.value);
+        });
       }
 
       for (const resizer of sheetWrapEl.querySelectorAll('.col-resizer[data-resize-col]')) {

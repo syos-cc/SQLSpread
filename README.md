@@ -1,10 +1,7 @@
 # TODO
 
-- Spaltenhöhe ändern
-
-
-
 - drop down menü wenn value ist JSON aus JSON Array lesen
+
 - Spalte hinzu fügen
 - Zeile hinzu fügen
 - Tabellenblatt hinzu fügen
