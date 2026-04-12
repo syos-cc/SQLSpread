@@ -2,6 +2,9 @@
 dist/*
 !dist/.gitkeep
 .DS_Store
+test.sql
+test.sh
+
 
 # ---> Node
 # Logs

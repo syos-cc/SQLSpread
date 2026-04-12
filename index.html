@@ -3,16 +3,284 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SQLSpread</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>SQLite Spreadsheet Viewer</title>
+  <style>
+    :root {
+      --excel-green: #217346;
+      --grid: #d9d9d9;
+      --header-bg: #f3f3f3;
+      --sheet-bg: #ffffff;
+      --text: #000000;
+      --tab-border: #c8c8c8;
+      --panel-bg: #fafafa;
+      --error-bg: #c62828;
+      --checkbox-border: #8a8a8a;
+      --checkbox-bg: #ffffff;
+      --checkbox-checked-bg: #217346;
+      --checkbox-check: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Calibri, "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background: #f5f5f5;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #d0d0d0;
+      background: var(--panel-bg);
+      flex-wrap: wrap;
+    }
+
+    .btn,
+    .file-label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      padding: 0 14px;
+      border: 1px solid #bfbfbf;
+      background: #ffffff;
+      color: #222;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      text-decoration: none;
+      user-select: none;
+    }
+
+    .btn:hover,
+    .file-label:hover {
+      background: #f1f1f1;
+    }
+
+    #dbFile {
+      display: none;
+    }
+
+    .status {
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 10px;
+      border: 1px solid #d0d0d0;
+      background: #fff;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #333;
+      max-width: 100%;
+    }
+
+    .error {
+      background: var(--error-bg);
+      color: white;
+      border-color: var(--error-bg);
+    }
+
+    .formula-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid #d0d0d0;
+      background: #ffffff;
+    }
+
+    .name-box {
+      width: 90px;
+      min-height: 28px;
+      border: 1px solid #cfcfcf;
+      background: #fff;
+      padding: 4px 8px;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .formula-input {
+      flex: 1;
+      min-height: 28px;
+      border: 1px solid #cfcfcf;
+      background: #fff;
+      padding: 4px 8px;
+      font-size: 13px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .main {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sheet-wrap {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      background: var(--sheet-bg);
+    }
+
+    table.sheet {
+      border-collapse: collapse;
+      table-layout: fixed;
+      background: #fff;
+      width: max-content;
+      min-width: 0;
+    }
+
+    table.sheet th,
+    table.sheet td {
+      border: 1px solid var(--grid);
+      height: 24px;
+      min-height: 24px;
+      max-height: 24px;
+      padding: 2px 6px;
+      font: 14px Calibri, "Segoe UI", Arial, sans-serif;
+      color: #000;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: middle;
+      background: #fff;
+    }
+
+    table.sheet thead th,
+    .row-header,
+    .corner-cell {
+      background: var(--header-bg) !important;
+      font-weight: 400;
+      text-align: center;
+    }
+
+    .corner-cell {
+      min-width: 48px;
+      width: 48px;
+      position: sticky;
+      top: 0;
+      left: 0;
+      z-index: 4;
+    }
+
+    .col-header {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+    }
+
+    .row-header {
+      position: sticky;
+      left: 0;
+      z-index: 2;
+      width: 48px;
+      min-width: 48px;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: end;
+      gap: 2px;
+      padding: 8px 8px 0 8px;
+      border-top: 1px solid #d0d0d0;
+      background: #f3f3f3;
+      overflow-x: auto;
+      min-height: 44px;
+    }
+
+    .tab {
+      border: 1px solid var(--tab-border);
+      border-bottom: none;
+      background: #eaeaea;
+      padding: 8px 16px;
+      cursor: pointer;
+      border-radius: 6px 6px 0 0;
+      white-space: nowrap;
+      font-size: 14px;
+      user-select: none;
+    }
+
+    .tab.active {
+      background: #fff;
+      position: relative;
+      color: var(--excel-green);
+      font-weight: 600;
+    }
+
+    .tab.active::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 3px;
+      background: var(--excel-green);
+      border-radius: 6px 6px 0 0;
+    }
+
+    .empty {
+      padding: 24px;
+      color: #555;
+      font-size: 14px;
+    }
+
+    .muted {
+      color: #666;
+      font-size: 13px;
+    }
+
+    .bool-cell {
+      text-align: center !important;
+      padding: 0 !important;
+    }
+
+    .bool-checkbox {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 1px solid var(--checkbox-border);
+      border-radius: 3px;
+      background: var(--checkbox-bg);
+      position: relative;
+      vertical-align: middle;
+      margin: 0;
+    }
+
+    .bool-checkbox.checked {
+      background: var(--checkbox-checked-bg);
+      border-color: var(--checkbox-checked-bg);
+    }
+
+    .bool-checkbox.checked::after {
+      content: "";
+      position: absolute;
+      left: 4px;
+      top: 1px;
+      width: 4px;
+      height: 8px;
+      border: solid var(--checkbox-check);
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+  </style>
 </head>
 <body>
   <div class="topbar">
-    <button class="btn" id="openBtn" type="button">Datei öffnen</button>
     <label for="dbFile" class="file-label">SQLite-Datei auswählen</label>
     <input type="file" id="dbFile" accept=".sqlite,.db,.sqlite3,.db3,.bin,.dat" />
     <button class="btn" id="saveBtn" type="button">Datenbank speichern</button>
-<div id="status" class="status">Keine Datei geladen</div>
+    <div id="status" class="status">Keine Datei geladen</div>
   </div>
 
   <div class="formula-bar">
@@ -32,6 +300,573 @@
   </div>
 
   <script src="sql-wasm.js"></script>
-  <script src="script.js"></script>
+  <script>
+    let SQL;
+    let db;
+    let workbook = new Map();
+    let currentSheet = null;
+    let currentDbPath = null;
+    let currentDbName = 'database.sqlite';
+
+    const statusEl = document.getElementById('status');
+    const tabsEl = document.getElementById('tabs');
+    const sheetWrapEl = document.getElementById('sheetWrap');
+    const dbFileInput = document.getElementById('dbFile');
+    const nameBox = document.getElementById('nameBox');
+    const formulaBox = document.getElementById('formulaBox');
+    const saveBtn = document.getElementById('saveBtn');
+
+    const DEFAULTS = {
+      TAB: {
+        visibility: 'visible',
+        user_select: true
+      },
+      ROW: {
+        height: '24px',
+        min_height: '24px',
+        max_height: '24px',
+        background_color: '#ffffff',
+        visibility: 'visible',
+        user_select: true
+      },
+      COLUMN: {
+        width: '120px',
+        min_width: '40px',
+        max_width: '500px',
+        background_color: '#ffffff',
+        visibility: 'visible',
+        user_select: true
+      },
+      CELL: {
+        padding: '2px 6px',
+        border: '1px solid #d9d9d9',
+        border_top: null,
+        border_right: null,
+        border_bottom: null,
+        border_left: null,
+        background_color: '#ffffff',
+        box_shadow: 'none',
+        text_align: 'left',
+        vertical_align: 'middle',
+        font: '14px Calibri, "Segoe UI", Arial, sans-serif',
+        font_weight: 'normal',
+        color: '#000000',
+        white_space: 'nowrap',
+        overflow: 'hidden',
+        text_overflow: 'ellipsis',
+        display: 'table-cell',
+        visibility: 'visible',
+        opacity: '1',
+        cursor: 'cell',
+        user_select: true,
+        notice: ''
+      }
+    };
+
+    function isElectron() {
+      return typeof window.sqlspreadFS !== 'undefined';
+    }
+
+    function setStatus(message, isError = false) {
+      if (!statusEl) return;
+      statusEl.textContent = message;
+      statusEl.className = isError ? 'status error' : 'status';
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function normalizeColName(x) {
+      return String(x || '').trim().toUpperCase();
+    }
+
+    function colNameToNumber(name) {
+      const s = normalizeColName(name);
+      if (!/^[A-Z]+$/.test(s)) return Number.MAX_SAFE_INTEGER;
+      let num = 0;
+      for (let i = 0; i < s.length; i += 1) {
+        num = num * 26 + (s.charCodeAt(i) - 64);
+      }
+      return num;
+    }
+
+    function sortColumns(cols) {
+      return [...cols].sort((a, b) => {
+        const na = colNameToNumber(a);
+        const nb = colNameToNumber(b);
+        if (na !== nb) return na - nb;
+        return String(a).localeCompare(String(b));
+      });
+    }
+
+    function withDefault(value, fallback) {
+      return value === null || value === undefined ? fallback : value;
+    }
+
+    function styleValue(value) {
+      return value === null || value === undefined || value === '' ? undefined : value;
+    }
+
+    function cssUserSelect(value) {
+      if (value === null || value === undefined) return undefined;
+      return value ? 'text' : 'none';
+    }
+
+    function isBooleanTrue(value) {
+      if (value === true) return true;
+      if (value === 1) return true;
+      if (value === '1') return true;
+      if (typeof value === 'string' && value.toLowerCase() === 'true') return true;
+      return false;
+    }
+
+    function cellDisplayValue(cell) {
+      if (!cell) return '';
+      const type = String(cell.value_type || 'TEXT').toUpperCase();
+
+      switch (type) {
+        case 'INTEGER':
+          return cell.value_integer ?? '';
+
+        case 'REAL':
+          return cell.value_real ?? '';
+
+        case 'BOOLEAN':
+          return isBooleanTrue(cell.value_boolean);
+
+        case 'BLOB':
+          return cell.value_blob == null ? '' : '[BLOB]';
+
+        case 'NULL':
+          return '';
+
+        case 'TEXT':
+        default:
+          return cell.value_text ?? '';
+      }
+    }
+
+    function buildStyleString(styleMap) {
+      return Object.entries(styleMap)
+        .filter(([, value]) => value !== null && value !== undefined && value !== '')
+        .map(([key, value]) => `${key.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}:${String(value)}`)
+        .join(';');
+    }
+
+    function buildTabStyle(tabDef = {}) {
+      return buildStyleString({
+        visibility: styleValue(withDefault(tabDef.visibility, DEFAULTS.TAB.visibility)),
+        userSelect: styleValue(cssUserSelect(withDefault(tabDef.user_select, DEFAULTS.TAB.user_select)))
+      });
+    }
+
+    function buildCellStyle(cell = null, rowDef = {}, colDef = {}) {
+      const fixedWidth = withDefault(colDef?.width, DEFAULTS.COLUMN.width);
+      const fixedHeight = withDefault(rowDef?.height, DEFAULTS.ROW.height);
+
+      const resolvedUserSelect = withDefault(
+        cell?.user_select,
+        withDefault(
+          rowDef?.user_select,
+          withDefault(colDef?.user_select, DEFAULTS.CELL.user_select)
+        )
+      );
+
+      return buildStyleString({
+        width: styleValue(fixedWidth),
+        minWidth: styleValue(fixedWidth),
+        maxWidth: styleValue(fixedWidth),
+
+        height: styleValue(fixedHeight),
+        minHeight: styleValue(fixedHeight),
+        maxHeight: styleValue(fixedHeight),
+
+        padding: styleValue(withDefault(cell?.padding, DEFAULTS.CELL.padding)),
+
+        border: styleValue(withDefault(cell?.border, DEFAULTS.CELL.border)),
+        borderTop: styleValue(withDefault(cell?.border_top, DEFAULTS.CELL.border_top)),
+        borderRight: styleValue(withDefault(cell?.border_right, DEFAULTS.CELL.border_right)),
+        borderBottom: styleValue(withDefault(cell?.border_bottom, DEFAULTS.CELL.border_bottom)),
+        borderLeft: styleValue(withDefault(cell?.border_left, DEFAULTS.CELL.border_left)),
+
+        backgroundColor: styleValue(
+          withDefault(
+            cell?.background_color,
+            withDefault(
+              rowDef?.background_color,
+              withDefault(colDef?.background_color, DEFAULTS.CELL.background_color)
+            )
+          )
+        ),
+
+        boxShadow: styleValue(withDefault(cell?.box_shadow, DEFAULTS.CELL.box_shadow)),
+        textAlign: styleValue(withDefault(cell?.text_align, DEFAULTS.CELL.text_align)),
+        verticalAlign: styleValue(withDefault(cell?.vertical_align, DEFAULTS.CELL.vertical_align)),
+        font: styleValue(withDefault(cell?.font, DEFAULTS.CELL.font)),
+        fontWeight: styleValue(withDefault(cell?.font_weight, DEFAULTS.CELL.font_weight)),
+        color: styleValue(withDefault(cell?.color, DEFAULTS.CELL.color)),
+        whiteSpace: styleValue(withDefault(cell?.white_space, DEFAULTS.CELL.white_space)),
+        overflow: styleValue(withDefault(cell?.overflow, DEFAULTS.CELL.overflow)),
+        textOverflow: styleValue(withDefault(cell?.text_overflow, DEFAULTS.CELL.text_overflow)),
+        display: styleValue(withDefault(cell?.display, DEFAULTS.CELL.display)),
+        visibility: styleValue(
+          withDefault(
+            cell?.visibility,
+            withDefault(
+              rowDef?.visibility,
+              withDefault(colDef?.visibility, DEFAULTS.CELL.visibility)
+            )
+          )
+        ),
+        opacity: styleValue(withDefault(cell?.opacity, DEFAULTS.CELL.opacity)),
+        cursor: styleValue(withDefault(cell?.cursor, DEFAULTS.CELL.cursor)),
+        userSelect: styleValue(cssUserSelect(resolvedUserSelect))
+      });
+    }
+
+    function hasTable(database, tableName) {
+      const sql = `SELECT name FROM sqlite_master WHERE type='table' AND name=${JSON.stringify(tableName)}`;
+      return database.exec(sql).length > 0;
+    }
+
+    function requireSchema(database) {
+      const required = ['data', 'general_tabs', 'general_rows', 'general_columns'];
+      const missing = required.filter(name => !hasTable(database, name));
+      if (missing.length) {
+        throw new Error(`Die SQLite-Datei enthält nicht alle benötigten Tabellen: ${missing.join(', ')}`);
+      }
+    }
+
+    function queryTable(database, sql) {
+      const result = database.exec(sql);
+      if (!result.length) return [];
+      const columns = result[0].columns;
+      return result[0].values.map(row => Object.fromEntries(row.map((value, i) => [columns[i], value])));
+    }
+
+    function queryWorkbook(database) {
+      return {
+        tabs: queryTable(database, `
+          SELECT
+            z, visibility, user_select
+          FROM general_tabs
+          ORDER BY z
+        `),
+        rows: queryTable(database, `
+          SELECT
+            y, z, height, min_height, max_height, background_color, visibility, user_select
+          FROM general_rows
+          ORDER BY z, y
+        `),
+        columns: queryTable(database, `
+          SELECT
+            x, z, width, min_width, max_width, background_color, visibility, user_select
+          FROM general_columns
+          ORDER BY z, x
+        `),
+        cells: queryTable(database, `
+          SELECT
+            x, y, z,
+            value_type, value_text, value_integer, value_real, value_blob, value_boolean,
+            padding, border, border_top, border_right, border_bottom, border_left,
+            background_color, box_shadow, text_align, vertical_align,
+            font, font_weight, color, white_space, overflow, text_overflow,
+            display, visibility, opacity, cursor, user_select, notice
+          FROM data
+          ORDER BY z, y, x
+        `)
+      };
+    }
+
+    function ensureSheet(book, name) {
+      if (!book.has(name)) {
+        book.set(name, {
+          tabDef: {},
+          rowDefs: new Map(),
+          colDefs: new Map(),
+          cells: new Map(),
+          rows: new Set(),
+          cols: new Set()
+        });
+      }
+      return book.get(name);
+    }
+
+    function buildWorkbook(data) {
+      const book = new Map();
+
+      for (const tab of data.tabs) {
+        const sheetName = tab.z || 'Tabelle';
+        const sheet = ensureSheet(book, sheetName);
+        sheet.tabDef = tab;
+      }
+
+      for (const row of data.rows) {
+        const sheetName = row.z || 'Tabelle';
+        const rowNum = Number(row.y);
+        if (!Number.isFinite(rowNum)) continue;
+        const sheet = ensureSheet(book, sheetName);
+        sheet.rowDefs.set(rowNum, row);
+        sheet.rows.add(rowNum);
+      }
+
+      for (const col of data.columns) {
+        const sheetName = col.z || 'Tabelle';
+        const colName = normalizeColName(col.x);
+        if (!colName) continue;
+        const sheet = ensureSheet(book, sheetName);
+        sheet.colDefs.set(colName, { ...col, x: colName });
+        sheet.cols.add(colName);
+      }
+
+      for (const cell of data.cells) {
+        const sheetName = cell.z || 'Tabelle';
+        const colName = normalizeColName(cell.x);
+        const rowNum = Number(cell.y);
+        if (!colName || !Number.isFinite(rowNum)) continue;
+
+        const sheet = ensureSheet(book, sheetName);
+        sheet.cells.set(`${colName}|${rowNum}`, { ...cell, x: colName, y: rowNum });
+        sheet.cols.add(colName);
+        sheet.rows.add(rowNum);
+      }
+
+      return book;
+    }
+
+    function renderTabs() {
+      if (!tabsEl) return;
+
+      tabsEl.innerHTML = '';
+      const names = [...workbook.keys()];
+
+      if (!names.length) {
+        const msg = document.createElement('div');
+        msg.className = 'muted';
+        msg.textContent = 'Keine Blätter gefunden';
+        tabsEl.appendChild(msg);
+        return;
+      }
+
+      for (const name of names) {
+        const sheet = workbook.get(name);
+        const tab = document.createElement('button');
+        tab.type = 'button';
+        tab.className = 'tab' + (name === currentSheet ? ' active' : '');
+        tab.textContent = name;
+
+        const style = buildTabStyle(sheet?.tabDef || {});
+        if (style) tab.setAttribute('style', style);
+
+        tab.addEventListener('click', () => {
+          currentSheet = name;
+          renderTabs();
+          renderSheet(name);
+        });
+
+        tabsEl.appendChild(tab);
+      }
+    }
+
+    function renderSheet(sheetName) {
+      if (!sheetWrapEl) return;
+
+      const sheet = workbook.get(sheetName);
+      if (!sheet) {
+        sheetWrapEl.innerHTML = '<div class="empty">Blatt nicht gefunden</div>';
+        return;
+      }
+
+      const cols = sortColumns(sheet.cols);
+      const rowNums = [...sheet.rows].sort((a, b) => a - b);
+
+      if (!cols.length || !rowNums.length) {
+        sheetWrapEl.innerHTML = '<div class="empty">Dieses Blatt enthält keine darstellbaren Zeilen oder Spalten.</div>';
+        return;
+      }
+
+      const colgroup = cols.map(col => {
+        const colDef = sheet.colDefs.get(col) || {};
+        const width = withDefault(colDef.width, DEFAULTS.COLUMN.width);
+        return `<col style="width:${escapeHtml(width)};min-width:${escapeHtml(width)};max-width:${escapeHtml(width)};">`;
+      }).join('');
+
+      let html = `<table class="sheet"><colgroup><col style="width:48px;min-width:48px;max-width:48px;">${colgroup}</colgroup><thead><tr><th class="corner-cell"></th>`;
+
+      for (const col of cols) {
+        const colDef = sheet.colDefs.get(col) || {};
+        const colHeaderStyle = buildStyleString({
+          width: styleValue(withDefault(colDef.width, DEFAULTS.COLUMN.width)),
+          minWidth: styleValue(withDefault(colDef.width, DEFAULTS.COLUMN.width)),
+          maxWidth: styleValue(withDefault(colDef.width, DEFAULTS.COLUMN.width)),
+          backgroundColor: styleValue(withDefault(colDef.background_color, DEFAULTS.COLUMN.background_color)),
+          visibility: styleValue(withDefault(colDef.visibility, DEFAULTS.COLUMN.visibility)),
+          userSelect: styleValue(cssUserSelect(withDefault(colDef.user_select, DEFAULTS.COLUMN.user_select)))
+        });
+
+        html += `<th class="col-header"${colHeaderStyle ? ` style="${escapeHtml(colHeaderStyle)}"` : ''}>${escapeHtml(col)}</th>`;
+      }
+
+      html += '</tr></thead><tbody>';
+
+      for (const rowNum of rowNums) {
+        const rowDef = sheet.rowDefs.get(rowNum) || {};
+        const rowHeaderStyle = buildStyleString({
+          height: styleValue(withDefault(rowDef.height, DEFAULTS.ROW.height)),
+          minHeight: styleValue(withDefault(rowDef.height, DEFAULTS.ROW.height)),
+          maxHeight: styleValue(withDefault(rowDef.height, DEFAULTS.ROW.height)),
+          backgroundColor: styleValue(withDefault(rowDef.background_color, DEFAULTS.ROW.background_color)),
+          visibility: styleValue(withDefault(rowDef.visibility, DEFAULTS.ROW.visibility)),
+          userSelect: styleValue(cssUserSelect(withDefault(rowDef.user_select, DEFAULTS.ROW.user_select)))
+        });
+
+        html += `<tr><th class="row-header"${rowHeaderStyle ? ` style="${escapeHtml(rowHeaderStyle)}"` : ''}>${escapeHtml(rowNum)}</th>`;
+
+        for (const col of cols) {
+          const cell = sheet.cells.get(`${col}|${rowNum}`) || null;
+          const colDef = sheet.colDefs.get(col) || {};
+          const value = cellDisplayValue(cell);
+          const titleValue = withDefault(cell?.notice, DEFAULTS.CELL.notice);
+          const title = titleValue ? ` title="${escapeHtml(titleValue)}"` : '';
+          const style = buildCellStyle(cell, rowDef, colDef);
+          const cellRef = `${col}${rowNum}`;
+
+          const isBooleanCell = cell && String(cell.value_type || '').toUpperCase() === 'BOOLEAN';
+          const renderedValue = isBooleanCell
+            ? `<span class="bool-checkbox${value === true ? ' checked' : ''}"></span>`
+            : escapeHtml(value);
+
+          const tdClass = isBooleanCell ? ' class="bool-cell"' : '';
+
+          html += `<td${tdClass} data-cell="${escapeHtml(cellRef)}" data-value="${escapeHtml(String(value))}"${title}${style ? ` style="${escapeHtml(style)}"` : ''}>${renderedValue}</td>`;
+        }
+
+        html += '</tr>';
+      }
+
+      html += '</tbody></table>';
+      sheetWrapEl.innerHTML = html;
+
+      for (const td of sheetWrapEl.querySelectorAll('td[data-cell]')) {
+        td.addEventListener('click', () => {
+          if (nameBox) nameBox.textContent = td.dataset.cell || '-';
+          if (formulaBox) formulaBox.textContent = td.dataset.value || '';
+        });
+      }
+    }
+
+    async function ensureSqlJs() {
+      if (!SQL) {
+        SQL = await initSqlJs({
+          locateFile: file => `${file}`
+        });
+      }
+    }
+
+    async function loadDatabaseFromArrayBuffer(buffer, label, options = {}) {
+      try {
+        await ensureSqlJs();
+        db = new SQL.Database(new Uint8Array(buffer));
+
+        requireSchema(db);
+
+        const data = queryWorkbook(db);
+        workbook = buildWorkbook(data);
+        currentSheet = [...workbook.keys()][0] || null;
+
+        currentDbPath = options.path || null;
+        currentDbName = options.name || label || 'database.sqlite';
+
+        renderTabs();
+
+        if (currentSheet) {
+          renderSheet(currentSheet);
+        } else if (sheetWrapEl) {
+          sheetWrapEl.innerHTML = '<div class="empty">Die Datenbank enthält keine darstellbaren Blätter.</div>';
+        }
+
+        if (nameBox) nameBox.textContent = '-';
+        if (formulaBox) formulaBox.textContent = '-';
+
+        setStatus(`${label} geladen · ${data.cells.length} Zellen · ${workbook.size} Blatt/Blätter`);
+      } catch (error) {
+        console.error(error);
+        workbook = new Map();
+        currentSheet = null;
+        currentDbPath = null;
+        renderTabs();
+        if (sheetWrapEl) {
+          sheetWrapEl.innerHTML = `<div class="empty">Fehler beim Laden: ${escapeHtml(error.message || String(error))}</div>`;
+        }
+        setStatus(error.message || String(error), true);
+      }
+    }
+
+    async function saveDatabaseToFile() {
+      try {
+        if (!db) {
+          throw new Error('Es ist keine Datenbank geladen.');
+        }
+
+        const bytes = Array.from(db.export());
+
+        if (isElectron()) {
+          const result = await window.sqlspreadFS.saveDatabase({
+            path: currentDbPath,
+            filename: currentDbName || 'database.sqlite',
+            data: bytes
+          });
+
+          if (!result || result.canceled) {
+            setStatus('Speichern abgebrochen');
+            return;
+          }
+
+          currentDbPath = result.path || currentDbPath;
+          currentDbName = result.name || currentDbName;
+          setStatus(`${currentDbName} gespeichert`);
+          return;
+        }
+
+        const blob = new Blob([new Uint8Array(bytes)], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = currentDbName || 'database.sqlite';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        setStatus(`${currentDbName || 'database.sqlite'} gespeichert`);
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || String(error), true);
+      }
+    }
+
+    if (dbFileInput) {
+      dbFileInput.addEventListener('change', async event => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        setStatus(`Lade ${file.name} ...`);
+        const buffer = await file.arrayBuffer();
+        await loadDatabaseFromArrayBuffer(buffer, file.name, {
+          name: file.name
+        });
+      });
+    }
+
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async () => {
+        await saveDatabaseToFile();
+      });
+    }
+  </script>
 </body>
 </html>
