@@ -1,13 +1,9 @@
 # TODO
 
-- vervollständigen der beispiel sql datei
-
-
-- Editieren der felder die editierbar sein dürfen
-- drop down menü wenn value ist JSON aus JSON Array lesen
-
 - Spaltenbreite ändern
+
 - Spaltenhöhe ändern
+- drop down menü wenn value ist JSON aus JSON Array lesen
 - Spalte hinzu fügen
 - Zeile hinzu fügen
 - Tabellenblatt hinzu fügen
@@ -25,4 +21,6 @@
     - Schriftart
     - ...
   - Trigger
-
+- Trigger editor
+- Tastenkürzel ( z.b. Speichern )
+- Editieren von Tabellennamen

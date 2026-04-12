@@ -18,6 +18,8 @@
       --checkbox-bg: #ffffff;
       --checkbox-checked-bg: #217346;
       --checkbox-check: #ffffff;
+      --editable-hover: #e8f0fe;
+      --editable-active: #d2e3fc;
     }
 
     * { box-sizing: border-box; }
@@ -110,13 +112,17 @@
     .formula-input {
       flex: 1;
       min-height: 28px;
+      height: 28px;
       border: 1px solid #cfcfcf;
       background: #fff;
       padding: 4px 8px;
       font-size: 13px;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
+      outline: none;
+    }
+
+    .formula-input:disabled {
+      background: #f3f3f3;
+      color: #777;
     }
 
     .main {
@@ -273,11 +279,46 @@
       border-width: 0 2px 2px 0;
       transform: rotate(45deg);
     }
+
+    td[data-editable="true"] {
+      cursor: text;
+    }
+
+    td[data-editable="true"]:hover {
+      background: var(--editable-hover) !important;
+    }
+
+    td[data-editable="false"] {
+      cursor: default;
+    }
+
+    td.cell-selected {
+      outline: 2px solid var(--excel-green);
+      outline-offset: -2px;
+    }
+
+    td.cell-editing {
+      background: var(--editable-active) !important;
+      padding: 0 !important;
+    }
+
+    .cell-editor {
+      width: 100%;
+      height: 100%;
+      min-height: 22px;
+      border: none;
+      outline: none;
+      margin: 0;
+      padding: 2px 6px;
+      background: transparent;
+      font: inherit;
+      color: inherit;
+    }
   </style>
 </head>
 <body>
   <div class="topbar">
-    <label for="dbFile" class="file-label">SQLite-Datei auswählen</label>
+    <label for="dbFile" class="file-label" id="openDbLabel">SQLite-Datei auswählen</label>
     <input type="file" id="dbFile" accept=".sqlite,.db,.sqlite3,.db3,.bin,.dat" />
     <button class="btn" id="saveBtn" type="button">Datenbank speichern</button>
     <div id="status" class="status">Keine Datei geladen</div>
@@ -285,7 +326,7 @@
 
   <div class="formula-bar">
     <div class="name-box" id="nameBox">-</div>
-    <div class="formula-input" id="formulaBox">-</div>
+    <input class="formula-input" id="formulaBox" type="text" value="-" disabled />
   </div>
 
   <div class="main">
@@ -307,11 +348,13 @@
     let currentSheet = null;
     let currentDbPath = null;
     let currentDbName = 'database.sqlite';
+    let currentSelectedCellRef = null;
 
     const statusEl = document.getElementById('status');
     const tabsEl = document.getElementById('tabs');
     const sheetWrapEl = document.getElementById('sheetWrap');
     const dbFileInput = document.getElementById('dbFile');
+    const openDbLabel = document.getElementById('openDbLabel');
     const nameBox = document.getElementById('nameBox');
     const formulaBox = document.getElementById('formulaBox');
     const saveBtn = document.getElementById('saveBtn');
@@ -426,6 +469,22 @@
       return false;
     }
 
+    function isExplicitFalse(value) {
+      return value === false || value === 0 || value === '0' ||
+             (typeof value === 'string' && value.toLowerCase() === 'false');
+    }
+
+    function isCellEditable(cell = null, rowDef = {}, colDef = {}) {
+      const resolvedUserSelect = withDefault(
+        cell?.user_select,
+        withDefault(
+          rowDef?.user_select,
+          withDefault(colDef?.user_select, DEFAULTS.CELL.user_select)
+        )
+      );
+      return !isExplicitFalse(resolvedUserSelect);
+    }
+
     function cellDisplayValue(cell) {
       if (!cell) return '';
       const type = String(cell.value_type || 'TEXT').toUpperCase();
@@ -433,19 +492,14 @@
       switch (type) {
         case 'INTEGER':
           return cell.value_integer ?? '';
-
         case 'REAL':
           return cell.value_real ?? '';
-
         case 'BOOLEAN':
           return isBooleanTrue(cell.value_boolean);
-
         case 'BLOB':
           return cell.value_blob == null ? '' : '[BLOB]';
-
         case 'NULL':
           return '';
-
         case 'TEXT':
         default:
           return cell.value_text ?? '';
@@ -640,6 +694,301 @@
       return book;
     }
 
+    function getCellRecord(sheetName, cellRef) {
+      const match = /^([A-Z]+)(\d+)$/.exec(String(cellRef || ''));
+      if (!match) return null;
+
+      const col = match[1];
+      const rowNum = Number(match[2]);
+      const sheet = workbook.get(sheetName);
+      if (!sheet) return null;
+
+      return {
+        sheet,
+        col,
+        rowNum,
+        key: `${col}|${rowNum}`,
+        cell: sheet.cells.get(`${col}|${rowNum}`) || null,
+        rowDef: sheet.rowDefs.get(rowNum) || {},
+        colDef: sheet.colDefs.get(col) || {}
+      };
+    }
+
+    function getSelectedCellMeta() {
+      if (!currentSheet || !currentSelectedCellRef) return null;
+      return getCellRecord(currentSheet, currentSelectedCellRef);
+    }
+
+    function setCellValueInDb(sheetName, col, rowNum, rawValue) {
+      if (!db) {
+        throw new Error('Es ist keine Datenbank geladen.');
+      }
+
+      const cellKey = `${col}|${rowNum}`;
+      const sheet = workbook.get(sheetName);
+      const currentCell = sheet?.cells.get(cellKey) || null;
+
+      if (!currentCell) {
+        throw new Error('Zelle nicht gefunden.');
+      }
+
+      const valueType = String(currentCell.value_type || 'TEXT').toUpperCase();
+
+      if (valueType === 'BLOB') {
+        throw new Error('BLOB-Zellen werden noch nicht unterstützt.');
+      }
+
+      if (valueType === 'BOOLEAN') {
+        const boolValue = rawValue === true || rawValue === 1 ? 1 : 0;
+        db.run(
+          `UPDATE data
+           SET value_boolean = ?
+           WHERE z = ? AND x = ? AND y = ?`,
+          [boolValue, sheetName, col, rowNum]
+        );
+        return;
+      }
+
+      if (valueType === 'INTEGER') {
+        if (rawValue === '') {
+          db.run(
+            `UPDATE data
+             SET value_integer = NULL
+             WHERE z = ? AND x = ? AND y = ?`,
+            [sheetName, col, rowNum]
+          );
+        } else {
+          const parsed = Number(rawValue);
+          if (!Number.isInteger(parsed)) {
+            throw new Error('Bitte eine gültige Ganzzahl eingeben.');
+          }
+          db.run(
+            `UPDATE data
+             SET value_integer = ?
+             WHERE z = ? AND x = ? AND y = ?`,
+            [parsed, sheetName, col, rowNum]
+          );
+        }
+        return;
+      }
+
+      if (valueType === 'REAL') {
+        if (rawValue === '') {
+          db.run(
+            `UPDATE data
+             SET value_real = NULL
+             WHERE z = ? AND x = ? AND y = ?`,
+            [sheetName, col, rowNum]
+          );
+        } else {
+          const parsed = Number(String(rawValue).replace(',', '.'));
+          if (Number.isNaN(parsed)) {
+            throw new Error('Bitte eine gültige Zahl eingeben.');
+          }
+          db.run(
+            `UPDATE data
+             SET value_real = ?
+             WHERE z = ? AND x = ? AND y = ?`,
+            [parsed, sheetName, col, rowNum]
+          );
+        }
+        return;
+      }
+
+      db.run(
+        `UPDATE data
+         SET value_text = ?
+         WHERE z = ? AND x = ? AND y = ?`,
+        [rawValue, sheetName, col, rowNum]
+      );
+    }
+
+    async function reloadWorkbookFromDb(statusMessage = null) {
+      if (!db) return;
+
+      const data = queryWorkbook(db);
+      workbook = buildWorkbook(data);
+
+      if (!currentSheet || !workbook.has(currentSheet)) {
+        currentSheet = [...workbook.keys()][0] || null;
+      }
+
+      renderTabs();
+
+      if (currentSheet) {
+        renderSheet(currentSheet);
+      } else if (sheetWrapEl) {
+        sheetWrapEl.innerHTML = '<div class="empty">Die Datenbank enthält keine darstellbaren Blätter.</div>';
+      }
+
+      if (statusMessage) {
+        setStatus(statusMessage);
+      }
+    }
+
+    function clearSelectedCell() {
+      for (const td of sheetWrapEl.querySelectorAll('td.cell-selected')) {
+        td.classList.remove('cell-selected');
+      }
+    }
+
+    function selectCell(td) {
+      clearSelectedCell();
+      td.classList.add('cell-selected');
+
+      currentSelectedCellRef = td.dataset.cell || null;
+
+      if (nameBox) {
+        nameBox.textContent = td.dataset.cell || '-';
+      }
+
+      if (formulaBox) {
+        formulaBox.value = td.dataset.value || '';
+        formulaBox.disabled = td.dataset.editable !== 'true';
+      }
+    }
+
+    async function toggleBooleanCell(td) {
+      if (!td || td.dataset.editable !== 'true') return;
+
+      const cellRef = td.dataset.cell || '';
+      const meta = getCellRecord(currentSheet, cellRef);
+      if (!meta || !meta.cell) return;
+
+      const valueType = String(meta.cell.value_type || 'TEXT').toUpperCase();
+      if (valueType !== 'BOOLEAN') return;
+
+      try {
+        const oldValue = isBooleanTrue(meta.cell.value_boolean);
+        setCellValueInDb(currentSheet, meta.col, meta.rowNum, !oldValue);
+        await reloadWorkbookFromDb(`${currentDbName} geändert`);
+        const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
+        if (updatedTd) {
+          selectCell(updatedTd);
+        }
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || String(error), true);
+        await reloadWorkbookFromDb();
+      }
+    }
+
+    function activateCellEditor(td) {
+      if (!td || td.dataset.editable !== 'true') return;
+      if (td.dataset.editing === 'true') return;
+
+      const cellRef = td.dataset.cell || '';
+      const meta = getCellRecord(currentSheet, cellRef);
+      if (!meta || !meta.cell) return;
+
+      const valueType = String(meta.cell.value_type || 'TEXT').toUpperCase();
+      if (valueType === 'BOOLEAN') {
+        toggleBooleanCell(td);
+        return;
+      }
+
+      if (valueType === 'BLOB') return;
+
+      td.dataset.editing = 'true';
+      td.classList.add('cell-editing');
+
+      const oldValue = td.dataset.value || '';
+      td.innerHTML = '';
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'cell-editor';
+      input.value = oldValue;
+
+      let finished = false;
+
+      const finish = async (save) => {
+        if (finished) return;
+        finished = true;
+
+        const newValue = input.value;
+        td.dataset.editing = 'false';
+        td.classList.remove('cell-editing');
+
+        if (!save || newValue === oldValue) {
+          await reloadWorkbookFromDb();
+          const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
+          if (updatedTd) selectCell(updatedTd);
+          return;
+        }
+
+        try {
+          setCellValueInDb(currentSheet, meta.col, meta.rowNum, newValue);
+          await reloadWorkbookFromDb(`${currentDbName} geändert`);
+          const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
+          if (updatedTd) selectCell(updatedTd);
+        } catch (error) {
+          console.error(error);
+          setStatus(error.message || String(error), true);
+          await reloadWorkbookFromDb();
+          const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
+          if (updatedTd) selectCell(updatedTd);
+        }
+      };
+
+      input.addEventListener('keydown', async (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          await finish(true);
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          await finish(false);
+        }
+      });
+
+      input.addEventListener('blur', async () => {
+        await finish(true);
+      });
+
+      td.appendChild(input);
+      input.focus();
+      input.select();
+    }
+
+    async function saveFormulaBoxToSelectedCell() {
+      const meta = getSelectedCellMeta();
+      if (!meta || !meta.cell || !formulaBox) return;
+
+      if (!isCellEditable(meta.cell, meta.rowDef, meta.colDef)) {
+        setStatus('Diese Zelle ist nicht editierbar.', true);
+        formulaBox.disabled = true;
+        return;
+      }
+
+      const valueType = String(meta.cell.value_type || 'TEXT').toUpperCase();
+
+      try {
+        if (valueType === 'BOOLEAN') {
+          const raw = String(formulaBox.value || '').trim().toLowerCase();
+          const boolValue =
+            raw === 'true' || raw === '1' || raw === 'ja' || raw === 'yes' || raw === 'on';
+          setCellValueInDb(currentSheet, meta.col, meta.rowNum, boolValue);
+        } else {
+          setCellValueInDb(currentSheet, meta.col, meta.rowNum, formulaBox.value);
+        }
+
+        await reloadWorkbookFromDb(`${currentDbName} geändert`);
+
+        const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${currentSelectedCellRef}"]`);
+        if (updatedTd) {
+          selectCell(updatedTd);
+        }
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || String(error), true);
+        await reloadWorkbookFromDb();
+        const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${currentSelectedCellRef}"]`);
+        if (updatedTd) {
+          selectCell(updatedTd);
+        }
+      }
+    }
+
     function renderTabs() {
       if (!tabsEl) return;
 
@@ -736,15 +1085,17 @@
           const title = titleValue ? ` title="${escapeHtml(titleValue)}"` : '';
           const style = buildCellStyle(cell, rowDef, colDef);
           const cellRef = `${col}${rowNum}`;
+          const editable = isCellEditable(cell, rowDef, colDef);
 
           const isBooleanCell = cell && String(cell.value_type || '').toUpperCase() === 'BOOLEAN';
           const renderedValue = isBooleanCell
             ? `<span class="bool-checkbox${value === true ? ' checked' : ''}"></span>`
             : escapeHtml(value);
 
-          const tdClass = isBooleanCell ? ' class="bool-cell"' : '';
+          const tdClass = isBooleanCell ? 'bool-cell' : '';
+          const classAttr = tdClass ? ` class="${tdClass}"` : '';
 
-          html += `<td${tdClass} data-cell="${escapeHtml(cellRef)}" data-value="${escapeHtml(String(value))}"${title}${style ? ` style="${escapeHtml(style)}"` : ''}>${renderedValue}</td>`;
+          html += `<td${classAttr} data-cell="${escapeHtml(cellRef)}" data-value="${escapeHtml(String(value))}" data-editable="${editable ? 'true' : 'false'}"${title}${style ? ` style="${escapeHtml(style)}"` : ''}>${renderedValue}</td>`;
         }
 
         html += '</tr>';
@@ -755,8 +1106,11 @@
 
       for (const td of sheetWrapEl.querySelectorAll('td[data-cell]')) {
         td.addEventListener('click', () => {
-          if (nameBox) nameBox.textContent = td.dataset.cell || '-';
-          if (formulaBox) formulaBox.textContent = td.dataset.value || '';
+          selectCell(td);
+        });
+
+        td.addEventListener('dblclick', () => {
+          activateCellEditor(td);
         });
       }
     }
@@ -782,6 +1136,7 @@
 
         currentDbPath = options.path || null;
         currentDbName = options.name || label || 'database.sqlite';
+        currentSelectedCellRef = null;
 
         renderTabs();
 
@@ -792,7 +1147,10 @@
         }
 
         if (nameBox) nameBox.textContent = '-';
-        if (formulaBox) formulaBox.textContent = '-';
+        if (formulaBox) {
+          formulaBox.value = '-';
+          formulaBox.disabled = true;
+        }
 
         setStatus(`${label} geladen · ${data.cells.length} Zellen · ${workbook.size} Blatt/Blätter`);
       } catch (error) {
@@ -800,9 +1158,14 @@
         workbook = new Map();
         currentSheet = null;
         currentDbPath = null;
+        currentSelectedCellRef = null;
         renderTabs();
         if (sheetWrapEl) {
           sheetWrapEl.innerHTML = `<div class="empty">Fehler beim Laden: ${escapeHtml(error.message || String(error))}</div>`;
+        }
+        if (formulaBox) {
+          formulaBox.value = '-';
+          formulaBox.disabled = true;
         }
         setStatus(error.message || String(error), true);
       }
@@ -862,9 +1225,44 @@
       });
     }
 
+    if (isElectron() && openDbLabel) {
+      openDbLabel.addEventListener('click', async (event) => {
+        event.preventDefault();
+
+        try {
+          const result = await window.sqlspreadFS.openDatabase();
+          if (!result || result.canceled) return;
+
+          const bytes = new Uint8Array(result.data);
+          await loadDatabaseFromArrayBuffer(bytes.buffer, result.name, {
+            path: result.path,
+            name: result.name
+          });
+        } catch (error) {
+          console.error(error);
+          setStatus(error.message || String(error), true);
+        }
+      });
+    }
+
     if (saveBtn) {
       saveBtn.addEventListener('click', async () => {
         await saveDatabaseToFile();
+      });
+    }
+
+    if (formulaBox) {
+      formulaBox.addEventListener('keydown', async (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          await saveFormulaBoxToSelectedCell();
+        }
+      });
+
+      formulaBox.addEventListener('blur', async () => {
+        if (document.activeElement !== formulaBox) {
+          await saveFormulaBoxToSelectedCell();
+        }
       });
     }
   </script>
