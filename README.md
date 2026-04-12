@@ -1,6 +1,5 @@
 # TODO
 
-- value_bool hinzu fügen als checkbox
 - vervollständigen der beispiel sql datei
 
 

@@ -554,9 +554,9 @@
       return {
         tabs: queryTable(database, `
           SELECT
-            z, visibility, user_select
+            z, sort_order, visibility, user_select
           FROM general_tabs
-          ORDER BY z
+          ORDER BY sort_order, rowid
         `),
         rows: queryTable(database, `
           SELECT
