@@ -8,6 +8,7 @@
 - Spalte hinzu fügen
 - Zeile hinzu fügen
 - Tabellenblatt hinzu fügen
+- Leere Datenbank erstellen
 - Einfärben von Zellen mittels menü
 - Einfärben von Spalten mittels menü
 - Einfärben von Tabellenblatt mittels menü

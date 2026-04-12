@@ -220,6 +220,34 @@
       z-index: 2;
       width: 48px;
       min-width: 48px;
+      padding: 0 !important;
+      overflow: visible !important;
+    }
+
+    .row-header-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 6px 10px 6px;
+    }
+
+    .row-resizer {
+      position: absolute;
+      left: 0;
+      bottom: -3px;
+      width: 100%;
+      height: 6px;
+      cursor: row-resize;
+      user-select: none;
+      z-index: 10;
+    }
+
+    .row-resizer:hover {
+      background: rgba(33, 115, 70, 0.15);
     }
 
     .tabs {
@@ -343,13 +371,15 @@
       color: inherit;
     }
 
-    body.col-resizing {
+    body.col-resizing,
+    body.col-resizing * {
       cursor: col-resize !important;
       user-select: none !important;
     }
 
-    body.col-resizing * {
-      cursor: col-resize !important;
+    body.row-resizing,
+    body.row-resizing * {
+      cursor: row-resize !important;
       user-select: none !important;
     }
   </style>
@@ -758,17 +788,13 @@
     }
 
     function setCellValueInDb(sheetName, col, rowNum, rawValue) {
-      if (!db) {
-        throw new Error('Es ist keine Datenbank geladen.');
-      }
+      if (!db) throw new Error('Es ist keine Datenbank geladen.');
 
       const cellKey = `${col}|${rowNum}`;
       const sheet = workbook.get(sheetName);
       const currentCell = sheet?.cells.get(cellKey) || null;
 
-      if (!currentCell) {
-        throw new Error('Zelle nicht gefunden.');
-      }
+      if (!currentCell) throw new Error('Zelle nicht gefunden.');
 
       const valueType = String(currentCell.value_type || 'TEXT').toUpperCase();
 
@@ -842,10 +868,7 @@
     }
 
     function setColumnWidthInDb(sheetName, col, widthPx) {
-      if (!db) {
-        throw new Error('Es ist keine Datenbank geladen.');
-      }
-
+      if (!db) throw new Error('Es ist keine Datenbank geladen.');
       const safeWidth = Math.max(30, Math.round(widthPx)) + 'px';
 
       db.run(
@@ -856,6 +879,20 @@
       );
 
       return safeWidth;
+    }
+
+    function setRowHeightInDb(sheetName, rowNum, heightPx) {
+      if (!db) throw new Error('Es ist keine Datenbank geladen.');
+      const safeHeight = Math.max(20, Math.round(heightPx)) + 'px';
+
+      db.run(
+        `UPDATE general_rows
+         SET height = ?, min_height = ?, max_height = ?
+         WHERE z = ? AND y = ?`,
+        [safeHeight, safeHeight, safeHeight, sheetName, rowNum]
+      );
+
+      return safeHeight;
     }
 
     async function reloadWorkbookFromDb(statusMessage = null) {
@@ -893,10 +930,7 @@
 
       currentSelectedCellRef = td.dataset.cell || null;
 
-      if (nameBox) {
-        nameBox.textContent = td.dataset.cell || '-';
-      }
-
+      if (nameBox) nameBox.textContent = td.dataset.cell || '-';
       if (formulaBox) {
         formulaBox.value = td.dataset.value || '';
         formulaBox.disabled = td.dataset.editable !== 'true';
@@ -918,9 +952,7 @@
         setCellValueInDb(currentSheet, meta.col, meta.rowNum, !oldValue);
         await reloadWorkbookFromDb(`${currentDbName} geändert`);
         const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
-        if (updatedTd) {
-          selectCell(updatedTd);
-        }
+        if (updatedTd) selectCell(updatedTd);
       } catch (error) {
         console.error(error);
         setStatus(error.message || String(error), true);
@@ -941,7 +973,6 @@
         toggleBooleanCell(td);
         return;
       }
-
       if (valueType === 'BLOB') return;
 
       td.dataset.editing = 'true';
@@ -981,8 +1012,6 @@
           console.error(error);
           setStatus(error.message || String(error), true);
           await reloadWorkbookFromDb();
-          const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
-          if (updatedTd) selectCell(updatedTd);
         }
       };
 
@@ -1028,19 +1057,12 @@
         }
 
         await reloadWorkbookFromDb(`${currentDbName} geändert`);
-
         const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${currentSelectedCellRef}"]`);
-        if (updatedTd) {
-          selectCell(updatedTd);
-        }
+        if (updatedTd) selectCell(updatedTd);
       } catch (error) {
         console.error(error);
         setStatus(error.message || String(error), true);
         await reloadWorkbookFromDb();
-        const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${currentSelectedCellRef}"]`);
-        if (updatedTd) {
-          selectCell(updatedTd);
-        }
       }
     }
 
@@ -1052,7 +1074,6 @@
 
       const startX = event.clientX;
       const startWidth = th.getBoundingClientRect().width;
-
       document.body.classList.add('col-resizing');
 
       function onMouseMove(moveEvent) {
@@ -1087,6 +1108,56 @@
 
         try {
           setColumnWidthInDb(currentSheet, col, newWidth);
+          await reloadWorkbookFromDb(`${currentDbName} geändert`);
+        } catch (error) {
+          console.error(error);
+          setStatus(error.message || String(error), true);
+          await reloadWorkbookFromDb();
+        }
+      }
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    }
+
+    function startRowResize(event, rowNum, rowHeader) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (!currentSheet) return;
+
+      const startY = event.clientY;
+      const tr = rowHeader.closest('tr');
+      const startHeight = tr.getBoundingClientRect().height;
+      document.body.classList.add('row-resizing');
+
+      function onMouseMove(moveEvent) {
+        const delta = moveEvent.clientY - startY;
+        const newHeight = Math.max(20, startHeight + delta);
+        const heightStr = `${Math.round(newHeight)}px`;
+
+        tr.style.height = heightStr;
+        tr.style.minHeight = heightStr;
+        tr.style.maxHeight = heightStr;
+
+        const cells = tr.querySelectorAll('th,td');
+        for (const cell of cells) {
+          cell.style.height = heightStr;
+          cell.style.minHeight = heightStr;
+          cell.style.maxHeight = heightStr;
+        }
+      }
+
+      async function onMouseUp(upEvent) {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        document.body.classList.remove('row-resizing');
+
+        const delta = upEvent.clientY - startY;
+        const newHeight = Math.max(20, startHeight + delta);
+
+        try {
+          setRowHeightInDb(currentSheet, rowNum, newHeight);
           await reloadWorkbookFromDb(`${currentDbName} geändert`);
         } catch (error) {
           console.error(error);
@@ -1190,7 +1261,12 @@
           userSelect: styleValue(cssUserSelect(withDefault(rowDef.user_select, DEFAULTS.ROW.user_select)))
         });
 
-        html += `<tr><th class="row-header"${rowHeaderStyle ? ` style="${escapeHtml(rowHeaderStyle)}"` : ''}>${escapeHtml(rowNum)}</th>`;
+        html += `<tr data-row="${rowNum}"><th class="row-header" data-row-header="${rowNum}"${rowHeaderStyle ? ` style="${escapeHtml(rowHeaderStyle)}"` : ''}>
+          <div class="row-header-inner">
+            <span>${escapeHtml(rowNum)}</span>
+            <div class="row-resizer" data-resize-row="${rowNum}"></div>
+          </div>
+        </th>`;
 
         for (const col of cols) {
           const cell = sheet.cells.get(`${col}|${rowNum}`) || null;
@@ -1220,13 +1296,8 @@
       sheetWrapEl.innerHTML = html;
 
       for (const td of sheetWrapEl.querySelectorAll('td[data-cell]')) {
-        td.addEventListener('click', () => {
-          selectCell(td);
-        });
-
-        td.addEventListener('dblclick', () => {
-          activateCellEditor(td);
-        });
+        td.addEventListener('click', () => selectCell(td));
+        td.addEventListener('dblclick', () => activateCellEditor(td));
       }
 
       for (const resizer of sheetWrapEl.querySelectorAll('.col-resizer[data-resize-col]')) {
@@ -1235,6 +1306,15 @@
           const th = resizer.closest('th[data-col]');
           if (!col || !th) return;
           startColumnResize(event, col, th);
+        });
+      }
+
+      for (const resizer of sheetWrapEl.querySelectorAll('.row-resizer[data-resize-row]')) {
+        resizer.addEventListener('mousedown', (event) => {
+          const rowNum = Number(resizer.dataset.resizeRow);
+          const rowHeader = resizer.closest('th[data-row-header]');
+          if (!rowNum || !rowHeader) return;
+          startRowResize(event, rowNum, rowHeader);
         });
       }
     }
@@ -1297,9 +1377,7 @@
 
     async function saveDatabaseToFile() {
       try {
-        if (!db) {
-          throw new Error('Es ist keine Datenbank geladen.');
-        }
+        if (!db) throw new Error('Es ist keine Datenbank geladen.');
 
         const bytes = Array.from(db.export());
 
