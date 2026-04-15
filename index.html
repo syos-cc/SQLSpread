@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SQLite Spreadsheet Viewer</title>
+  <title>SQLSpread</title>
   <style>
     :root {
       --excel-green: #217346;
@@ -340,6 +340,10 @@
       padding: 0 !important;
     }
 
+    .dropdown-cell {
+      background-color: inherit !important;
+    }
+
     .cell-dropdown {
       width: 100%;
       height: 100%;
@@ -348,7 +352,7 @@
       outline: none;
       margin: 0;
       padding: 0 20px 0 6px;
-      background: #fff;
+      background-color: transparent;
       font: inherit;
       color: inherit;
       appearance: none;
@@ -365,8 +369,8 @@
     }
 
     .cell-dropdown:disabled {
-      background-color: #fff;
-      color: #000;
+      background-color: transparent;
+      color: inherit;
       opacity: 1;
       cursor: default;
     }
@@ -435,9 +439,8 @@
   <div class="main">
     <div class="sheet-wrap" id="sheetWrap">
       <div class="empty">
-        SQLite-Datei laden. Erwartet werden die Tabellen <code>data</code>, <code>general_tabs</code>,
-        <code>general_rows</code> und <code>general_columns</code>.
-        <div class="muted">Tabs = <code>z</code>, Spalten = <code>x</code>, Zeilen = <code>y</code>.</div>
+        SQLite-Datei laden. Erwartet werden die Tabellen <code>tabs</code>, <code>lines</code>, <code>parts</code> und <code>cells</code>.
+        <div class="muted">Tabs = <code>name</code>, Spalten = <code>part</code>, Zeilen = <code>line</code>.</div>
       </div>
     </div>
     <div class="tabs" id="tabs"></div>
@@ -578,9 +581,9 @@
     }
 
     function parseJsonValue(cell) {
-      if (!cell || cell.value_json == null || cell.value_json === '') return null;
+      if (!cell || cell.value == null || cell.value === '') return null;
       try {
-        return typeof cell.value_json === 'string' ? JSON.parse(cell.value_json) : cell.value_json;
+        return typeof cell.value === 'string' ? JSON.parse(cell.value) : cell.value;
       } catch {
         return null;
       }
@@ -619,6 +622,7 @@
     function cellDisplayValue(cell) {
       if (!cell) return '';
       const type = String(cell.value_type || 'TEXT').toUpperCase();
+      const raw = cell.value ?? '';
 
       if (type === 'JSON' && isJsonDropdownCell(cell)) {
         return getJsonDropdownSelected(cell);
@@ -626,20 +630,20 @@
 
       switch (type) {
         case 'INTEGER':
-          return cell.value_integer ?? '';
+          return raw === null || raw === '' ? '' : String(parseInt(raw, 10));
         case 'REAL':
-          return cell.value_real ?? '';
+          return raw === null || raw === '' ? '' : String(raw);
         case 'BOOLEAN':
-          return isBooleanTrue(cell.value_boolean);
+          return isBooleanTrue(raw);
         case 'BLOB':
-          return cell.value_blob == null ? '' : '[BLOB]';
+          return raw == null || raw === '' ? '' : '[BLOB]';
         case 'NULL':
           return '';
         case 'JSON':
-          return cell.value_json ?? '';
+          return raw ?? '';
         case 'TEXT':
         default:
-          return cell.value_text ?? '';
+          return raw ?? '';
       }
     }
 
@@ -727,7 +731,7 @@
     }
 
     function requireSchema(database) {
-      const required = ['data', 'general_tabs', 'general_rows', 'general_columns'];
+      const required = ['cells', 'tabs', 'lines', 'parts'];
       const missing = required.filter(name => !hasTable(database, name));
       if (missing.length) {
         throw new Error(`Die SQLite-Datei enthält nicht alle benötigten Tabellen: ${missing.join(', ')}`);
@@ -745,32 +749,32 @@
       return {
         tabs: queryTable(database, `
           SELECT
-            z, sort_order, visibility, user_select
-          FROM general_tabs
-          ORDER BY sort_order, rowid
+            name AS z, sort_order, visibility, user_select
+          FROM tabs
+          ORDER BY sort_order, name
         `),
         rows: queryTable(database, `
           SELECT
-            y, z, height, min_height, max_height, background_color, visibility, user_select
-          FROM general_rows
-          ORDER BY z, y
+            line AS y, tab AS z, height, background_color, visibility, user_select
+          FROM lines
+          ORDER BY tab, line
         `),
         columns: queryTable(database, `
           SELECT
-            x, z, width, min_width, max_width, background_color, visibility, user_select
-          FROM general_columns
-          ORDER BY z, x
+            part AS x, tab AS z, width, background_color, visibility, user_select
+          FROM parts
+          ORDER BY tab, part
         `),
         cells: queryTable(database, `
           SELECT
-            x, y, z,
-            value_type, value_text, value_integer, value_real, value_blob, value_boolean, value_json,
+            part AS x, line AS y, tab AS z,
+            value_type, value,
             padding, border, border_top, border_right, border_bottom, border_left,
             background_color, box_shadow, text_align, vertical_align,
             font, font_weight, color, white_space, overflow, text_overflow,
             display, visibility, opacity, cursor, user_select, notice
-          FROM data
-          ORDER BY z, y, x
+          FROM cells
+          ORDER BY tab, line, part
         `)
       };
     }
@@ -884,24 +888,25 @@
           ...obj,
           type: 'dropdown',
           selected: selectedValue,
+          selectd: selectedValue,
           options
         };
 
         db.run(
-          `UPDATE data
-           SET value_json = ?
-           WHERE z = ? AND x = ? AND y = ?`,
+          `UPDATE cells
+           SET value = ?
+           WHERE tab = ? AND part = ? AND line = ?`,
           [JSON.stringify(newObj), sheetName, col, rowNum]
         );
         return;
       }
 
       if (valueType === 'BOOLEAN') {
-        const boolValue = rawValue === true || rawValue === 1 ? 1 : 0;
+        const boolValue = rawValue === true || rawValue === 1 ? '1' : '0';
         db.run(
-          `UPDATE data
-           SET value_boolean = ?
-           WHERE z = ? AND x = ? AND y = ?`,
+          `UPDATE cells
+           SET value = ?
+           WHERE tab = ? AND part = ? AND line = ?`,
           [boolValue, sheetName, col, rowNum]
         );
         return;
@@ -910,9 +915,9 @@
       if (valueType === 'INTEGER') {
         if (rawValue === '') {
           db.run(
-            `UPDATE data
-             SET value_integer = NULL
-             WHERE z = ? AND x = ? AND y = ?`,
+            `UPDATE cells
+             SET value = ''
+             WHERE tab = ? AND part = ? AND line = ?`,
             [sheetName, col, rowNum]
           );
         } else {
@@ -921,10 +926,10 @@
             throw new Error('Bitte eine gültige Ganzzahl eingeben.');
           }
           db.run(
-            `UPDATE data
-             SET value_integer = ?
-             WHERE z = ? AND x = ? AND y = ?`,
-            [parsed, sheetName, col, rowNum]
+            `UPDATE cells
+             SET value = ?
+             WHERE tab = ? AND part = ? AND line = ?`,
+            [String(parsed), sheetName, col, rowNum]
           );
         }
         return;
@@ -933,9 +938,9 @@
       if (valueType === 'REAL') {
         if (rawValue === '') {
           db.run(
-            `UPDATE data
-             SET value_real = NULL
-             WHERE z = ? AND x = ? AND y = ?`,
+            `UPDATE cells
+             SET value = ''
+             WHERE tab = ? AND part = ? AND line = ?`,
             [sheetName, col, rowNum]
           );
         } else {
@@ -944,30 +949,20 @@
             throw new Error('Bitte eine gültige Zahl eingeben.');
           }
           db.run(
-            `UPDATE data
-             SET value_real = ?
-             WHERE z = ? AND x = ? AND y = ?`,
-            [parsed, sheetName, col, rowNum]
+            `UPDATE cells
+             SET value = ?
+             WHERE tab = ? AND part = ? AND line = ?`,
+            [String(parsed), sheetName, col, rowNum]
           );
         }
         return;
       }
 
-      if (valueType === 'JSON') {
-        db.run(
-          `UPDATE data
-           SET value_json = ?
-           WHERE z = ? AND x = ? AND y = ?`,
-          [rawValue, sheetName, col, rowNum]
-        );
-        return;
-      }
-
       db.run(
-        `UPDATE data
-         SET value_text = ?
-         WHERE z = ? AND x = ? AND y = ?`,
-        [rawValue, sheetName, col, rowNum]
+        `UPDATE cells
+         SET value = ?
+         WHERE tab = ? AND part = ? AND line = ?`,
+        [String(rawValue ?? ''), sheetName, col, rowNum]
       );
     }
 
@@ -976,10 +971,10 @@
       const safeWidth = Math.max(30, Math.round(widthPx)) + 'px';
 
       db.run(
-        `UPDATE general_columns
-         SET width = ?, min_width = ?, max_width = ?
-         WHERE z = ? AND UPPER(x) = ?`,
-        [safeWidth, safeWidth, safeWidth, sheetName, col]
+        `UPDATE parts
+         SET width = ?
+         WHERE tab = ? AND UPPER(part) = ?`,
+        [safeWidth, sheetName, col]
       );
 
       return safeWidth;
@@ -990,10 +985,10 @@
       const safeHeight = Math.max(20, Math.round(heightPx)) + 'px';
 
       db.run(
-        `UPDATE general_rows
-         SET height = ?, min_height = ?, max_height = ?
-         WHERE z = ? AND y = ?`,
-        [safeHeight, safeHeight, safeHeight, sheetName, rowNum]
+        `UPDATE lines
+         SET height = ?
+         WHERE tab = ? AND line = ?`,
+        [safeHeight, sheetName, rowNum]
       );
 
       return safeHeight;
@@ -1052,7 +1047,7 @@
       if (valueType !== 'BOOLEAN') return;
 
       try {
-        const oldValue = isBooleanTrue(meta.cell.value_boolean);
+        const oldValue = isBooleanTrue(meta.cell.value);
         setCellValueInDb(currentSheet, meta.col, meta.rowNum, !oldValue);
         await reloadWorkbookFromDb(`${currentDbName} geändert`);
         const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
@@ -1100,10 +1095,7 @@
 
       if (valueType === 'JSON' && isJsonDropdownCell(meta.cell)) {
         const select = td.querySelector('select.cell-dropdown');
-        if (select && !select.disabled) {
-          select.focus();
-          select.size = 1;
-        }
+        if (select && !select.disabled) select.focus();
         return;
       }
 
@@ -1186,8 +1178,6 @@
           const boolValue =
             raw === 'true' || raw === '1' || raw === 'ja' || raw === 'yes' || raw === 'on';
           setCellValueInDb(currentSheet, meta.col, meta.rowNum, boolValue);
-        } else if (valueType === 'JSON' && isJsonDropdownCell(meta.cell)) {
-          setCellValueInDb(currentSheet, meta.col, meta.rowNum, formulaBox.value);
         } else {
           setCellValueInDb(currentSheet, meta.col, meta.rowNum, formulaBox.value);
         }
@@ -1424,7 +1414,7 @@
             tdClass = 'bool-cell';
             renderedValue = `<span class="bool-checkbox${value === true ? ' checked' : ''}"></span>`;
           } else if (isDropdownCell) {
-            tdClass = 'json-dropdown-cell';
+            tdClass = 'json-dropdown-cell dropdown-cell';
             const options = getJsonDropdownOptions(cell);
             const selected = getJsonDropdownSelected(cell);
 
