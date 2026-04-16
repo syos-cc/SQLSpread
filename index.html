@@ -196,7 +196,34 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 2px 10px 2px 6px;
+      gap: 6px;
+      padding: 2px 16px 2px 6px;
+    }
+
+    .col-header-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .col-header.sortable {
+      cursor: pointer;
+    }
+
+    .col-header.sortable:hover {
+      background: #e8ecef !important;
+    }
+
+    .sort-indicator {
+      min-width: 10px;
+      font-size: 11px;
+      line-height: 1;
+      color: #666;
+      user-select: none;
+    }
+
+    .col-header.sorted .sort-indicator {
+      color: var(--excel-green);
+      font-weight: 700;
     }
 
     .col-resizer {
@@ -475,6 +502,7 @@
     let currentDbPath = null;
     let currentDbName = 'database.sqlite';
     let currentSelectedCellRef = null;
+    const sheetSortState = new Map();
 
     const statusEl = document.getElementById('status');
     const tabsEl = document.getElementById('tabs');
@@ -674,6 +702,92 @@
       if (!text) return '';
       if (text.toUpperCase() === 'NULL') return '';
       return text;
+    }
+
+
+    function getSheetSortState(sheetName) {
+      return sheetSortState.get(sheetName) || { col: null, direction: null };
+    }
+
+    function setSheetSortState(sheetName, col, direction) {
+      if (!sheetName) return;
+      if (!col || !direction) {
+        sheetSortState.delete(sheetName);
+        return;
+      }
+      sheetSortState.set(sheetName, { col, direction });
+    }
+
+    function getSortIndicator(direction) {
+      if (direction === 'asc') return '▲';
+      if (direction === 'desc') return '▼';
+      return '';
+    }
+
+    function getNextSortDirection(sheetName, col) {
+      const current = getSheetSortState(sheetName);
+      if (current.col !== col) return 'asc';
+      if (current.direction === 'asc') return 'desc';
+      if (current.direction === 'desc') return null;
+      return 'asc';
+    }
+
+    function getCellSortMeta(cell) {
+      if (!cell) return { type: 'empty', value: '' };
+
+      const valueType = String(cell.value_type || 'TEXT').toUpperCase();
+      const displayValue = cellDisplayValue(cell);
+
+      if (valueType === 'BOOLEAN') {
+        return { type: 'number', value: displayValue === true ? 1 : 0 };
+      }
+
+      if (valueType === 'INTEGER' || valueType === 'REAL') {
+        const num = Number(displayValue);
+        if (!Number.isNaN(num)) return { type: 'number', value: num };
+      }
+
+      return { type: 'text', value: String(displayValue ?? '').trim().toLocaleLowerCase('de-DE') };
+    }
+
+    function compareCellValues(aCell, bCell) {
+      const a = getCellSortMeta(aCell);
+      const b = getCellSortMeta(bCell);
+
+      const aEmpty = a.type === 'empty' || a.value === '';
+      const bEmpty = b.type === 'empty' || b.value === '';
+
+      if (aEmpty && bEmpty) return 0;
+      if (aEmpty) return 1;
+      if (bEmpty) return -1;
+
+      if (a.type === 'number' && b.type === 'number') {
+        return a.value - b.value;
+      }
+
+      return String(a.value).localeCompare(String(b.value), 'de-DE', {
+        numeric: true,
+        sensitivity: 'base'
+      });
+    }
+
+    function getSortedRowNumbers(sheet, sheetName) {
+      const baseRowNums = [...sheet.rows].sort((a, b) => a - b);
+      const sortState = getSheetSortState(sheetName);
+
+      if (!sortState.col || !sortState.direction) {
+        return baseRowNums;
+      }
+
+      const factor = sortState.direction === 'desc' ? -1 : 1;
+
+      return [...baseRowNums].sort((a, b) => {
+        const aCell = sheet.cells.get(`${sortState.col}|${a}`) || null;
+        const bCell = sheet.cells.get(`${sortState.col}|${b}`) || null;
+        const result = compareCellValues(aCell, bCell);
+        if (result !== 0) return result * factor;
+        return a - b;
+      });
     }
 
     function buildStyleString(styleMap) {
@@ -1410,7 +1524,8 @@
       }
 
       const cols = sortColumns(sheet.cols);
-      const rowNums = [...sheet.rows].sort((a, b) => a - b);
+      const sortState = getSheetSortState(sheetName);
+      const rowNums = getSortedRowNumbers(sheet, sheetName);
 
       if (!cols.length || !rowNums.length) {
         sheetWrapEl.innerHTML = '<div class="empty">Dieses Blatt enthält keine darstellbaren Zeilen oder Spalten.</div>';
@@ -1436,9 +1551,13 @@
           userSelect: styleValue(cssUserSelect(withDefault(colDef.user_select, DEFAULTS.COLUMN.user_select)))
         });
 
-        html += `<th class="col-header" data-col="${escapeHtml(col)}"${colHeaderStyle ? ` style="${escapeHtml(colHeaderStyle)}"` : ''}>
+        const isSortedCol = sortState.col === col && !!sortState.direction;
+        const sortIndicator = getSortIndicator(isSortedCol ? sortState.direction : null);
+
+        html += `<th class="col-header sortable${isSortedCol ? ' sorted' : ''}" data-col="${escapeHtml(col)}"${colHeaderStyle ? ` style="${escapeHtml(colHeaderStyle)}"` : ''}>
           <div class="col-header-inner">
-            <span>${escapeHtml(col)}</span>
+            <span class="col-header-label">${escapeHtml(col)}</span>
+            <span class="sort-indicator">${escapeHtml(sortIndicator)}</span>
             <div class="col-resizer" data-resize-col="${escapeHtml(col)}"></div>
           </div>
         </th>`;
@@ -1532,6 +1651,17 @@
           const td = select.closest('td[data-cell]');
           if (!td) return;
           await updateJsonDropdownCell(td, select.value);
+        });
+      }
+
+      for (const header of sheetWrapEl.querySelectorAll('th.col-header.sortable[data-col]')) {
+        header.addEventListener('click', (event) => {
+          if (event.target.closest('.col-resizer')) return;
+          const col = header.dataset.col;
+          if (!col) return;
+          const nextDirection = getNextSortDirection(sheetName, col);
+          setSheetSortState(sheetName, col, nextDirection);
+          renderSheet(sheetName);
         });
       }
 
