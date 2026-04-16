@@ -594,6 +594,7 @@
     const sheetSortState = new Map();
     const sheetFilterState = new Map();
     let currentFilterMenu = null;
+        const CONFIG_UI_STATE_KEY = 'sqlspread.ui_state';
 
     const statusEl = document.getElementById('status');
     const tabsEl = document.getElementById('tabs');
@@ -796,6 +797,90 @@
       return text;
     }
 
+
+    function hasConfigTable(database) {
+      return hasTable(database, 'config');
+    }
+
+    function saveUiStateToConfig() {
+      if (!db || !hasConfigTable(db)) return;
+
+      const state = {
+        version: 1,
+        sort: Object.fromEntries(sheetSortState.entries()),
+        filter: Object.fromEntries(
+          [...sheetFilterState.entries()].map(([sheetName, filters]) => [
+            sheetName,
+            Object.fromEntries(filters.entries())
+          ])
+        )
+      };
+
+      const payload = JSON.stringify(state);
+      const existing = queryTable(
+        db,
+        `SELECT key FROM config WHERE key = ${JSON.stringify(CONFIG_UI_STATE_KEY)} LIMIT 1`
+      );
+
+      if (existing.length) {
+        db.run(
+          `UPDATE config SET value = ? WHERE key = ?`,
+          [payload, CONFIG_UI_STATE_KEY]
+        );
+      } else {
+        db.run(
+          `INSERT INTO config (key, value) VALUES (?, ?)`,
+          [CONFIG_UI_STATE_KEY, payload]
+        );
+      }
+    }
+
+    function loadUiStateFromConfig() {
+      sheetSortState.clear();
+      sheetFilterState.clear();
+
+      if (!db || !hasConfigTable(db)) return;
+
+      const rows = queryTable(
+        db,
+        `SELECT value FROM config WHERE key = ${JSON.stringify(CONFIG_UI_STATE_KEY)} LIMIT 1`
+      );
+
+      if (!rows.length || rows[0].value === null || rows[0].value === undefined || rows[0].value === '') {
+        return;
+      }
+
+      try {
+        const state = JSON.parse(String(rows[0].value));
+
+        if (state && state.sort && typeof state.sort === 'object') {
+          for (const [sheetName, sortState] of Object.entries(state.sort)) {
+            if (!sortState || !sortState.col || !sortState.direction) continue;
+            sheetSortState.set(sheetName, {
+              col: String(sortState.col),
+              direction: sortState.direction === 'desc' ? 'desc' : 'asc'
+            });
+          }
+        }
+
+        if (state && state.filter && typeof state.filter === 'object') {
+          for (const [sheetName, filterState] of Object.entries(state.filter)) {
+            if (!filterState || typeof filterState !== 'object') continue;
+            const filters = new Map();
+            for (const [col, values] of Object.entries(filterState)) {
+              if (!Array.isArray(values)) continue;
+              filters.set(String(col), values.map(value => String(value ?? '')));
+            }
+            if (filters.size) {
+              sheetFilterState.set(sheetName, filters);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('UI state in config could not be parsed:', error);
+      }
+    }
+
     function getSheetFilters(sheetName) {
       return sheetFilterState.get(sheetName) || new Map();
     }
@@ -818,6 +903,7 @@
       } else {
         sheetFilterState.delete(sheetName);
       }
+      saveUiStateToConfig();
     }
 
     function clearColumnFilter(sheetName, col) {
@@ -1008,9 +1094,11 @@
       if (!sheetName) return;
       if (!col || !direction) {
         sheetSortState.delete(sheetName);
+        saveUiStateToConfig();
         return;
       }
       sheetSortState.set(sheetName, { col, direction });
+      saveUiStateToConfig();
     }
 
     function getSortIndicator(direction) {
@@ -1438,6 +1526,7 @@
 
       const data = queryWorkbook(db);
       workbook = buildWorkbook(data);
+      loadUiStateFromConfig();
 
       if (!currentSheet || !workbook.has(currentSheet)) {
         currentSheet = [...workbook.keys()][0] || null;
@@ -2027,6 +2116,7 @@
 
         const data = queryWorkbook(db);
         workbook = buildWorkbook(data);
+        loadUiStateFromConfig();
         currentSheet = [...workbook.keys()][0] || null;
 
         currentDbPath = options.path || null;
