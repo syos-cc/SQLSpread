@@ -1,6 +1,7 @@
 # TODO
 
-- Auswählen in spalten
+- Tastenkürzel ( z.b. Speichern )
+
 
 - Zeilen und spalten freezen beim scrollen
 
@@ -23,6 +24,20 @@
     - ...
   - Trigger
 - Trigger editor
-- Tastenkürzel ( z.b. Speichern )
 - Editieren von Tabellennamen
 - Sprachen Unabhängig machen
+
+
+------
+Unterstützte Shortcuts
+Funktion	Windows / Linux	macOS
+Speichern	Ctrl+S	Cmd+S
+Suchen	Ctrl+F	Cmd+F
+Rückgängig	Ctrl+Z	Cmd+Z
+Wiederholen	Ctrl+Y	Cmd+Shift+Z
+Zelle leeren	Delete	Delete / Backspace
+Nächste Zelle rechts	Tab	Tab
+Nächste Zelle links	Shift+Tab	Shift+Tab
+Zelle unten	Enter	Enter
+Zelle oben	Shift+Enter	Shift+Enter
+Navigation	Pfeiltasten	Pfeiltasten

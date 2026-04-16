@@ -594,7 +594,9 @@
     const sheetSortState = new Map();
     const sheetFilterState = new Map();
     let currentFilterMenu = null;
-        const CONFIG_UI_STATE_KEY = 'sqlspread.ui_state';
+    const undoStack = [];
+    const redoStack = [];
+    const CONFIG_UI_STATE_KEY = 'sqlspread.ui_state';
 
     const statusEl = document.getElementById('status');
     const tabsEl = document.getElementById('tabs');
@@ -1387,6 +1389,159 @@
       return getCellRecord(currentSheet, currentSelectedCellRef);
     }
 
+    function getCellEditorValue(cell) {
+      if (!cell) return '';
+
+      const valueType = String(cell.value_type || 'TEXT').toUpperCase();
+
+      if (valueType === 'BOOLEAN') return isBooleanTrue(cell.value);
+      if (valueType === 'JSON' && isJsonDropdownCell(cell)) return getJsonDropdownSelected(cell);
+      return String(cellDisplayValue(cell) ?? '');
+    }
+
+    function valuesEqualForHistory(a, b) {
+      return JSON.stringify(a) === JSON.stringify(b);
+    }
+
+    async function applyCellValueChange(sheetName, col, rowNum, newValue, options = {}) {
+      const { recordHistory = true, statusMessage = `${currentDbName} geändert`, selectCellRef = true } = options;
+      const meta = getCellRecord(sheetName, `${col}${rowNum}`);
+      if (!meta || !meta.cell) throw new Error('Zelle nicht gefunden.');
+
+      const oldValue = getCellEditorValue(meta.cell);
+      if (valuesEqualForHistory(oldValue, newValue)) {
+        return false;
+      }
+
+      setCellValueInDb(sheetName, col, rowNum, newValue);
+
+      if (recordHistory) {
+        undoStack.push({ sheetName, col, rowNum, oldValue, newValue });
+        redoStack.length = 0;
+      }
+
+      await reloadWorkbookFromDb(statusMessage);
+
+      if (selectCellRef) {
+        const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${col}${rowNum}"]`);
+        if (updatedTd) selectCell(updatedTd);
+      }
+
+      return true;
+    }
+
+    async function undoLastChange() {
+      const entry = undoStack.pop();
+      if (!entry) {
+        setStatus('Nichts zum Rückgängig machen');
+        return;
+      }
+
+      try {
+        await applyCellValueChange(entry.sheetName, entry.col, entry.rowNum, entry.oldValue, {
+          recordHistory: false,
+          statusMessage: `${currentDbName} geändert (Rückgängig)`
+        });
+        redoStack.push(entry);
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || String(error), true);
+        await reloadWorkbookFromDb();
+      }
+    }
+
+    async function redoLastChange() {
+      const entry = redoStack.pop();
+      if (!entry) {
+        setStatus('Nichts zum Wiederholen');
+        return;
+      }
+
+      try {
+        await applyCellValueChange(entry.sheetName, entry.col, entry.rowNum, entry.newValue, {
+          recordHistory: false,
+          statusMessage: `${currentDbName} geändert (Wiederholen)`
+        });
+        undoStack.push(entry);
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || String(error), true);
+        await reloadWorkbookFromDb();
+      }
+    }
+
+    async function clearSelectedCellValue() {
+      const meta = getSelectedCellMeta();
+      if (!meta || !meta.cell) return;
+
+      if (!isCellEditable(meta.cell, meta.rowDef, meta.colDef)) {
+        setStatus('Diese Zelle ist nicht editierbar.', true);
+        return;
+      }
+
+      const valueType = String(meta.cell.value_type || 'TEXT').toUpperCase();
+      let clearedValue = '';
+
+      if (valueType === 'BOOLEAN') {
+        clearedValue = false;
+      } else if (valueType === 'JSON' && isJsonDropdownCell(meta.cell)) {
+        const options = getJsonDropdownOptions(meta.cell);
+        if (options.includes('')) {
+          clearedValue = '';
+        } else {
+          throw new Error('Diese Dropdown-Zelle kann nicht geleert werden.');
+        }
+      }
+
+      try {
+        await applyCellValueChange(currentSheet, meta.col, meta.rowNum, clearedValue, {
+          statusMessage: `${currentDbName} geändert`
+        });
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || String(error), true);
+        await reloadWorkbookFromDb();
+      }
+    }
+
+    function focusCellByRef(cellRef) {
+      if (!cellRef) return;
+      const td = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
+      if (!td) return;
+      selectCell(td);
+      td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+
+    function moveSelectionRelative(rowDelta, colDelta) {
+      if (!currentSheet) return;
+      const sheet = workbook.get(currentSheet);
+      if (!sheet) return;
+
+      const cols = sortColumns(sheet.cols);
+      const rowNums = getVisibleRowNumbers(sheet, currentSheet);
+      if (!cols.length || !rowNums.length) return;
+
+      let startRowIndex = 0;
+      let startColIndex = 0;
+
+      if (currentSelectedCellRef) {
+        const match = /^([A-Z]+)(\d+)$/.exec(currentSelectedCellRef);
+        if (match) {
+          const col = match[1];
+          const rowNum = Number(match[2]);
+          const foundColIndex = cols.indexOf(col);
+          const foundRowIndex = rowNums.indexOf(rowNum);
+          if (foundColIndex >= 0) startColIndex = foundColIndex;
+          if (foundRowIndex >= 0) startRowIndex = foundRowIndex;
+        }
+      }
+
+      const nextRowIndex = Math.max(0, Math.min(rowNums.length - 1, startRowIndex + rowDelta));
+      const nextColIndex = Math.max(0, Math.min(cols.length - 1, startColIndex + colDelta));
+
+      focusCellByRef(`${cols[nextColIndex]}${rowNums[nextRowIndex]}`);
+    }
+
     function setCellValueInDb(sheetName, col, rowNum, rawValue) {
       if (!db) throw new Error('Es ist keine Datenbank geladen.');
 
@@ -1576,10 +1731,9 @@
 
       try {
         const oldValue = isBooleanTrue(meta.cell.value);
-        setCellValueInDb(currentSheet, meta.col, meta.rowNum, !oldValue);
-        await reloadWorkbookFromDb(`${currentDbName} geändert`);
-        const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
-        if (updatedTd) selectCell(updatedTd);
+        await applyCellValueChange(currentSheet, meta.col, meta.rowNum, !oldValue, {
+          statusMessage: `${currentDbName} geändert`
+        });
       } catch (error) {
         console.error(error);
         setStatus(error.message || String(error), true);
@@ -1595,10 +1749,9 @@
       if (!meta || !meta.cell) return;
 
       try {
-        setCellValueInDb(currentSheet, meta.col, meta.rowNum, selectedValue);
-        await reloadWorkbookFromDb(`${currentDbName} geändert`);
-        const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
-        if (updatedTd) selectCell(updatedTd);
+        await applyCellValueChange(currentSheet, meta.col, meta.rowNum, selectedValue, {
+          statusMessage: `${currentDbName} geändert`
+        });
       } catch (error) {
         console.error(error);
         setStatus(error.message || String(error), true);
@@ -1658,10 +1811,9 @@
         }
 
         try {
-          setCellValueInDb(currentSheet, meta.col, meta.rowNum, newValue);
-          await reloadWorkbookFromDb(`${currentDbName} geändert`);
-          const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
-          if (updatedTd) selectCell(updatedTd);
+          await applyCellValueChange(currentSheet, meta.col, meta.rowNum, newValue, {
+            statusMessage: `${currentDbName} geändert`
+          });
         } catch (error) {
           console.error(error);
           setStatus(error.message || String(error), true);
@@ -1705,14 +1857,14 @@
           const raw = String(formulaBox.value || '').trim().toLowerCase();
           const boolValue =
             raw === 'true' || raw === '1' || raw === 'ja' || raw === 'yes' || raw === 'on';
-          setCellValueInDb(currentSheet, meta.col, meta.rowNum, boolValue);
+          await applyCellValueChange(currentSheet, meta.col, meta.rowNum, boolValue, {
+            statusMessage: `${currentDbName} geändert`
+          });
         } else {
-          setCellValueInDb(currentSheet, meta.col, meta.rowNum, formulaBox.value);
+          await applyCellValueChange(currentSheet, meta.col, meta.rowNum, formulaBox.value, {
+            statusMessage: `${currentDbName} geändert`
+          });
         }
-
-        await reloadWorkbookFromDb(`${currentDbName} geändert`);
-        const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${currentSelectedCellRef}"]`);
-        if (updatedTd) selectCell(updatedTd);
       } catch (error) {
         console.error(error);
         setStatus(error.message || String(error), true);
@@ -2095,7 +2247,7 @@
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         hideFilterMenu();
-        hideTooltip();
+        hideCustomTooltip();
       }
     });
 
@@ -2122,6 +2274,8 @@
         currentDbPath = options.path || null;
         currentDbName = options.name || label || 'database.sqlite';
         currentSelectedCellRef = null;
+        undoStack.length = 0;
+        redoStack.length = 0;
 
         renderTabs();
 
@@ -2144,6 +2298,8 @@
         currentSheet = null;
         currentDbPath = null;
         currentSelectedCellRef = null;
+        undoStack.length = 0;
+        redoStack.length = 0;
         renderTabs();
         if (sheetWrapEl) {
           sheetWrapEl.innerHTML = `<div class="empty">Fehler beim Laden: ${escapeHtml(error.message || String(error))}</div>`;
@@ -2248,6 +2404,75 @@
         }
       });
     }
+
+
+    window.addEventListener('keydown', async (event) => {
+      const activeElement = document.activeElement;
+      const activeTag = activeElement?.tagName?.toLowerCase();
+      const isTyping = activeTag === 'input' || activeTag === 'textarea' || activeElement?.isContentEditable;
+      const cellEditorActive = !!sheetWrapEl.querySelector('td[data-editing="true"] .cell-editor');
+      const mod = event.ctrlKey || event.metaKey;
+      const key = String(event.key || '').toLowerCase();
+
+      if (mod && key === 's') {
+        event.preventDefault();
+        event.stopPropagation();
+        await saveDatabaseToFile();
+        return;
+      }
+
+      if (mod && key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        await undoLastChange();
+        return;
+      }
+
+      if ((mod && key === 'y') || (mod && event.shiftKey && key === 'z')) {
+        event.preventDefault();
+        await redoLastChange();
+        return;
+      }
+
+      if (cellEditorActive) return;
+
+      if ((key === 'delete' || key === 'backspace') && !isTyping) {
+        event.preventDefault();
+        await clearSelectedCellValue();
+        return;
+      }
+
+      if (isTyping) return;
+
+      if (key === 'arrowleft') {
+        event.preventDefault();
+        moveSelectionRelative(0, -1);
+        return;
+      }
+      if (key === 'arrowright') {
+        event.preventDefault();
+        moveSelectionRelative(0, 1);
+        return;
+      }
+      if (key === 'arrowup') {
+        event.preventDefault();
+        moveSelectionRelative(-1, 0);
+        return;
+      }
+      if (key === 'arrowdown') {
+        event.preventDefault();
+        moveSelectionRelative(1, 0);
+        return;
+      }
+      if (key === 'tab') {
+        event.preventDefault();
+        moveSelectionRelative(0, event.shiftKey ? -1 : 1);
+        return;
+      }
+      if (key === 'enter') {
+        event.preventDefault();
+        moveSelectionRelative(event.shiftKey ? -1 : 1, 0);
+      }
+    });
   </script>
 </body>
 </html>
