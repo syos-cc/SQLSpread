@@ -1,8 +1,5 @@
 # TODO
 
-- Tastenkürzel ( z.b. Speichern )
-
-
 - Zeilen und spalten freezen beim scrollen
 
 - Spalte hinzu fügen

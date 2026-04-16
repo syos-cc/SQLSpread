@@ -799,6 +799,65 @@
       return text;
     }
 
+    function getCssPixelValue(value, fallback) {
+      const source = value === null || value === undefined || value === '' ? fallback : value;
+      const parsed = parseFloat(String(source));
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function isFrozenRow(rowDef = {}) {
+      return isBooleanTrue(rowDef?.freeze);
+    }
+
+    function isFrozenColumn(colDef = {}) {
+      return isBooleanTrue(colDef?.freeze);
+    }
+
+    function getFrozenRowNumbers(sheet) {
+      return [...sheet.rows].sort((a, b) => a - b).filter(rowNum => isFrozenRow(sheet.rowDefs.get(rowNum) || {}));
+    }
+
+    function getFrozenColumns(sheet) {
+      return sortColumns(sheet.cols).filter(col => isFrozenColumn(sheet.colDefs.get(col) || {}));
+    }
+
+    function getOrderedColumns(sheet) {
+      const allCols = sortColumns(sheet.cols);
+      const frozenCols = getFrozenColumns(sheet);
+      const frozenSet = new Set(frozenCols);
+      return [...frozenCols, ...allCols.filter(col => !frozenSet.has(col))];
+    }
+
+    function sanitizeSheetUiState(sheetName, sheet) {
+      if (!sheetName || !sheet) return;
+
+      const frozenCols = new Set(getFrozenColumns(sheet));
+      const sortState = sheetSortState.get(sheetName);
+      if (sortState?.col && frozenCols.has(sortState.col)) {
+        sheetSortState.delete(sheetName);
+      }
+
+      const filters = sheetFilterState.get(sheetName);
+      if (filters instanceof Map && filters.size) {
+        const sanitized = new Map();
+        for (const [col, values] of filters.entries()) {
+          if (frozenCols.has(col)) continue;
+          sanitized.set(col, values);
+        }
+        if (sanitized.size) {
+          sheetFilterState.set(sheetName, sanitized);
+        } else {
+          sheetFilterState.delete(sheetName);
+        }
+      }
+    }
+
+    function sanitizeAllUiState() {
+      for (const [sheetName, sheet] of workbook.entries()) {
+        sanitizeSheetUiState(sheetName, sheet);
+      }
+    }
+
 
     function hasConfigTable(database) {
       return hasTable(database, 'config');
@@ -928,7 +987,7 @@
     }
 
     function getColumnDistinctFilterValues(sheet, col) {
-      const rowNums = [...sheet.rows].sort((a, b) => a - b);
+      const rowNums = [...sheet.rows].sort((a, b) => a - b).filter(rowNum => !isFrozenRow(sheet.rowDefs.get(rowNum) || {}));
       const values = new Map();
 
       for (const rowNum of rowNums) {
@@ -954,10 +1013,13 @@
     }
 
     function rowMatchesFilters(sheet, sheetName, rowNum) {
+      if (isFrozenRow(sheet.rowDefs.get(rowNum) || {})) return true;
+
       const filters = getSheetFilters(sheetName);
       if (!filters.size) return true;
 
       for (const [col, allowedValues] of filters.entries()) {
+        if (isFrozenColumn(sheet.colDefs.get(col) || {})) continue;
         if (!allowedValues) continue;
         if (!allowedValues.length) return false;
         const cell = sheet.cells.get(`${col}|${rowNum}`) || null;
@@ -1003,6 +1065,7 @@
       if (!filterMenu) return;
       const sheet = workbook.get(sheetName);
       if (!sheet) return;
+      if (isFrozenColumn(sheet.colDefs.get(col) || {})) return;
 
       const distinctValues = getColumnDistinctFilterValues(sheet, col);
       const activeValues = getColumnFilterValues(sheetName, col);
@@ -1110,6 +1173,9 @@
     }
 
     function getNextSortDirection(sheetName, col) {
+      const sheet = workbook.get(sheetName);
+      if (isFrozenColumn(sheet?.colDefs.get(col) || {})) return null;
+
       const current = getSheetSortState(sheetName);
       if (current.col !== col) return 'asc';
       if (current.direction === 'asc') return 'desc';
@@ -1158,22 +1224,36 @@
 
     function getVisibleRowNumbers(sheet, sheetName) {
       const baseRowNums = [...sheet.rows].sort((a, b) => a - b);
-      const filteredRowNums = baseRowNums.filter(rowNum => rowMatchesFilters(sheet, sheetName, rowNum));
-      const sortState = getSheetSortState(sheetName);
+      const frozenRowNums = [];
+      const normalRowNums = [];
 
-      if (!sortState.col || !sortState.direction) {
-        return filteredRowNums;
+      for (const rowNum of baseRowNums) {
+        if (isFrozenRow(sheet.rowDefs.get(rowNum) || {})) {
+          frozenRowNums.push(rowNum);
+        } else {
+          normalRowNums.push(rowNum);
+        }
+      }
+
+      const filteredRowNums = normalRowNums.filter(rowNum => rowMatchesFilters(sheet, sheetName, rowNum));
+      const sortState = getSheetSortState(sheetName);
+      const canSort = !!(sortState.col && sortState.direction && !isFrozenColumn(sheet.colDefs.get(sortState.col) || {}));
+
+      if (!canSort) {
+        return [...frozenRowNums, ...filteredRowNums];
       }
 
       const factor = sortState.direction === 'desc' ? -1 : 1;
 
-      return [...filteredRowNums].sort((a, b) => {
+      const sortedRows = [...filteredRowNums].sort((a, b) => {
         const aCell = sheet.cells.get(`${sortState.col}|${a}`) || null;
         const bCell = sheet.cells.get(`${sortState.col}|${b}`) || null;
         const result = compareCellValues(aCell, bCell);
         if (result !== 0) return result * factor;
         return a - b;
       });
+
+      return [...frozenRowNums, ...sortedRows];
     }
 
     function buildStyleString(styleMap) {
@@ -1284,13 +1364,13 @@
         `),
         rows: queryTable(database, `
           SELECT
-            line AS y, tab AS z, height, background_color, visibility, user_select
+            line AS y, tab AS z, height, background_color, visibility, user_select, freeze
           FROM lines
           ORDER BY tab, line
         `),
         columns: queryTable(database, `
           SELECT
-            part AS x, tab AS z, width, background_color, visibility, user_select
+            part AS x, tab AS z, width, background_color, visibility, user_select, freeze
           FROM parts
           ORDER BY tab, part
         `),
@@ -1517,7 +1597,7 @@
       const sheet = workbook.get(currentSheet);
       if (!sheet) return;
 
-      const cols = sortColumns(sheet.cols);
+      const cols = getOrderedColumns(sheet);
       const rowNums = getVisibleRowNumbers(sheet, currentSheet);
       if (!cols.length || !rowNums.length) return;
 
@@ -1682,6 +1762,7 @@
       const data = queryWorkbook(db);
       workbook = buildWorkbook(data);
       loadUiStateFromConfig();
+      sanitizeAllUiState();
 
       if (!currentSheet || !workbook.has(currentSheet)) {
         currentSheet = [...workbook.keys()][0] || null;
@@ -2060,9 +2141,15 @@
         return;
       }
 
-      const cols = sortColumns(sheet.cols);
+      sanitizeSheetUiState(sheetName, sheet);
+
+      const cols = getOrderedColumns(sheet);
       const sortState = getSheetSortState(sheetName);
       const rowNums = getVisibleRowNumbers(sheet, sheetName);
+      const frozenCols = getFrozenColumns(sheet);
+      const frozenColSet = new Set(frozenCols);
+      const frozenRows = getFrozenRowNumbers(sheet);
+      const frozenRowSet = new Set(frozenRows);
 
       if (!cols.length) {
         sheetWrapEl.innerHTML = '<div class="empty">Dieses Blatt enthält keine darstellbaren Spalten.</div>';
@@ -2072,6 +2159,22 @@
       if (!rowNums.length) {
         sheetWrapEl.innerHTML = '<div class="empty">Keine Zeilen entsprechen dem aktiven Filter.</div>';
         return;
+      }
+
+      const frozenColumnLeftOffsets = new Map();
+      let frozenLeft = 48;
+      for (const col of frozenCols) {
+        frozenColumnLeftOffsets.set(col, frozenLeft);
+        const colDef = sheet.colDefs.get(col) || {};
+        frozenLeft += getCssPixelValue(colDef.width, 120);
+      }
+
+      const frozenRowTopOffsets = new Map();
+      let frozenTop = 24;
+      for (const rowNum of frozenRows) {
+        frozenRowTopOffsets.set(rowNum, frozenTop);
+        const rowDef = sheet.rowDefs.get(rowNum) || {};
+        frozenTop += getCssPixelValue(rowDef.height, 24);
       }
 
       const colgroup = cols.map(col => {
@@ -2084,19 +2187,22 @@
 
       for (const col of cols) {
         const colDef = sheet.colDefs.get(col) || {};
+        const isFrozenCol = frozenColSet.has(col);
         const colHeaderStyle = buildStyleString({
           width: styleValue(withDefault(colDef.width, DEFAULTS.COLUMN.width)),
           minWidth: styleValue(withDefault(colDef.width, DEFAULTS.COLUMN.width)),
           maxWidth: styleValue(withDefault(colDef.width, DEFAULTS.COLUMN.width)),
           backgroundColor: styleValue(withDefault(colDef.background_color, DEFAULTS.COLUMN.background_color)),
           visibility: styleValue(withDefault(colDef.visibility, DEFAULTS.COLUMN.visibility)),
-          userSelect: styleValue(cssUserSelect(withDefault(colDef.user_select, DEFAULTS.COLUMN.user_select)))
+          userSelect: styleValue(cssUserSelect(withDefault(colDef.user_select, DEFAULTS.COLUMN.user_select))),
+          left: isFrozenCol ? `${frozenColumnLeftOffsets.get(col) || 48}px` : undefined,
+          zIndex: isFrozenCol ? '6' : undefined
         });
 
-        const isSortedCol = sortState.col === col && !!sortState.direction;
+        const isSortedCol = !isFrozenCol && sortState.col === col && !!sortState.direction;
         const sortIndicator = getSortIndicator(isSortedCol ? sortState.direction : null);
 
-        html += `<th class="col-header sortable${isSortedCol ? ' sorted' : ''}" data-col="${escapeHtml(col)}"${colHeaderStyle ? ` style="${escapeHtml(colHeaderStyle)}"` : ''}>
+        html += `<th class="col-header${isFrozenCol ? '' : ' sortable'}${isSortedCol ? ' sorted' : ''}" data-col="${escapeHtml(col)}"${colHeaderStyle ? ` style="${escapeHtml(colHeaderStyle)}"` : ''}>
           <div class="col-header-inner">
             <span class="col-header-label">${escapeHtml(col)}</span>
             <span class="sort-indicator">${escapeHtml(sortIndicator)}</span>
@@ -2109,13 +2215,16 @@
 
       for (const rowNum of rowNums) {
         const rowDef = sheet.rowDefs.get(rowNum) || {};
+        const isFrozenRowValue = frozenRowSet.has(rowNum);
         const rowHeaderStyle = buildStyleString({
           height: styleValue(withDefault(rowDef.height, DEFAULTS.ROW.height)),
           minHeight: styleValue(withDefault(rowDef.height, DEFAULTS.ROW.height)),
           maxHeight: styleValue(withDefault(rowDef.height, DEFAULTS.ROW.height)),
           backgroundColor: styleValue(withDefault(rowDef.background_color, DEFAULTS.ROW.background_color)),
           visibility: styleValue(withDefault(rowDef.visibility, DEFAULTS.ROW.visibility)),
-          userSelect: styleValue(cssUserSelect(withDefault(rowDef.user_select, DEFAULTS.ROW.user_select)))
+          userSelect: styleValue(cssUserSelect(withDefault(rowDef.user_select, DEFAULTS.ROW.user_select))),
+          top: isFrozenRowValue ? `${frozenRowTopOffsets.get(rowNum) || 24}px` : undefined,
+          zIndex: isFrozenRowValue ? '5' : undefined
         });
 
         html += `<tr data-row="${rowNum}"><th class="row-header" data-row-header="${rowNum}"${rowHeaderStyle ? ` style="${escapeHtml(rowHeaderStyle)}"` : ''}>
@@ -2131,7 +2240,20 @@
           const value = cellDisplayValue(cell);
           const titleValue = normalizeNoticeValue(withDefault(cell?.notice, DEFAULTS.CELL.notice));
           const noticeAttr = titleValue ? ` data-notice="${escapeHtml(titleValue)}"` : '';
-          const style = buildCellStyle(cell, rowDef, colDef);
+          const baseStyle = buildCellStyle(cell, rowDef, colDef);
+          const isFrozenCol = frozenColSet.has(col);
+          const styleParts = [baseStyle];
+          if (isFrozenRowValue) {
+            styleParts.push('position:sticky');
+            styleParts.push(`top:${frozenRowTopOffsets.get(rowNum) || 24}px`);
+            styleParts.push(`z-index:${isFrozenCol ? 4 : 3}`);
+          }
+          if (isFrozenCol) {
+            styleParts.push('position:sticky');
+            styleParts.push(`left:${frozenColumnLeftOffsets.get(col) || 48}px`);
+            styleParts.push(`z-index:${isFrozenRowValue ? 4 : 2}`);
+          }
+          const style = styleParts.filter(Boolean).join(';');
           const cellRef = `${col}${rowNum}`;
           const editable = isCellEditable(cell, rowDef, colDef);
 
@@ -2196,11 +2318,12 @@
         });
       }
 
-      for (const header of sheetWrapEl.querySelectorAll('th.col-header.sortable[data-col]')) {
+      for (const header of sheetWrapEl.querySelectorAll('th.col-header[data-col]')) {
         header.addEventListener('click', (event) => {
           if (event.target.closest('.col-resizer')) return;
           const col = header.dataset.col;
           if (!col) return;
+          if (isFrozenColumn(sheet.colDefs.get(col) || {})) return;
           const nextDirection = getNextSortDirection(sheetName, col);
           setSheetSortState(sheetName, col, nextDirection);
           renderSheet(sheetName);
@@ -2212,6 +2335,7 @@
           event.stopPropagation();
           const col = header.dataset.col;
           if (!col) return;
+          if (isFrozenColumn(sheet.colDefs.get(col) || {})) return;
           openFilterMenu(sheetName, col, event.clientX, event.clientY);
         });
       }
