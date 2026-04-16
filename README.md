@@ -1,6 +1,8 @@
 # TODO
 
-- Sortieren nach Spalten
+- Auswählen in spalten
+
+- Zeilen und spalten freezen beim scrollen
 
 - Spalte hinzu fügen
 - Zeile hinzu fügen
@@ -10,8 +12,6 @@
 - Einfärben von Spalten mittels menü
 - Einfärben von Tabellenblatt mittels menü
 - Rahmen ( border ) zeichnen
-- Zeilen und spalten freezen beim scrollen
-- Auswählen in spalten
 - obere menüs in tabs grupieren
   - File
     - öffnen

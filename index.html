@@ -466,6 +466,93 @@
       pointer-events: none;
       z-index: 9999;
     }
+
+
+    .filter-menu {
+      position: fixed;
+      display: none;
+      min-width: 240px;
+      max-width: 320px;
+      background: #ffffff;
+      border: 1px solid #c8c8c8;
+      border-radius: 6px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+      z-index: 10000;
+      padding: 8px;
+      font: 13px Calibri, "Segoe UI", Arial, sans-serif;
+      color: #222;
+    }
+
+    .filter-menu-header {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .filter-menu-actions {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .filter-menu-btn {
+      min-height: 28px;
+      padding: 0 10px;
+      border: 1px solid #bfbfbf;
+      background: #ffffff;
+      border-radius: 4px;
+      cursor: pointer;
+      font: inherit;
+      color: inherit;
+    }
+
+    .filter-menu-btn:hover {
+      background: #f1f1f1;
+    }
+
+    .filter-menu-list {
+      max-height: 240px;
+      overflow: auto;
+      border: 1px solid #dddddd;
+      background: #fff;
+      padding: 4px;
+      margin-bottom: 8px;
+    }
+
+    .filter-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 2px;
+      cursor: pointer;
+    }
+
+    .filter-menu-item:hover {
+      background: #f7f7f7;
+    }
+
+    .filter-menu-item input {
+      margin: 0;
+    }
+
+    .filter-menu-label {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .filter-menu-footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .col-header.filter-active .col-header-inner {
+      background: linear-gradient(to bottom, #fefefe, #eef7ee);
+    }
+
   </style>
 </head>
 <body>
@@ -493,6 +580,8 @@
 
   <div id="customTooltip" class="custom-tooltip"></div>
 
+  <div id="filterMenu" class="filter-menu"></div>
+
   <script src="sql-wasm.js"></script>
   <script>
     let SQL;
@@ -503,6 +592,8 @@
     let currentDbName = 'database.sqlite';
     let currentSelectedCellRef = null;
     const sheetSortState = new Map();
+    const sheetFilterState = new Map();
+    let currentFilterMenu = null;
 
     const statusEl = document.getElementById('status');
     const tabsEl = document.getElementById('tabs');
@@ -513,6 +604,7 @@
     const formulaBox = document.getElementById('formulaBox');
     const saveBtn = document.getElementById('saveBtn');
     const customTooltip = document.getElementById('customTooltip');
+    const filterMenu = document.getElementById('filterMenu');
 
     const DEFAULTS = {
       TAB: {
@@ -704,6 +796,209 @@
       return text;
     }
 
+    function getSheetFilters(sheetName) {
+      return sheetFilterState.get(sheetName) || new Map();
+    }
+
+    function getColumnFilterValues(sheetName, col) {
+      const filters = getSheetFilters(sheetName);
+      return filters.get(col) || null;
+    }
+
+    function setColumnFilterValues(sheetName, col, values) {
+      if (!sheetName || !col) return;
+      const filters = new Map(getSheetFilters(sheetName));
+      if (values === null || values === undefined) {
+        filters.delete(col);
+      } else {
+        filters.set(col, [...values]);
+      }
+      if (filters.size) {
+        sheetFilterState.set(sheetName, filters);
+      } else {
+        sheetFilterState.delete(sheetName);
+      }
+    }
+
+    function clearColumnFilter(sheetName, col) {
+      setColumnFilterValues(sheetName, col, null);
+    }
+
+    function getCellFilterValue(cell) {
+      const displayValue = cellDisplayValue(cell);
+      if (displayValue === true) return '1';
+      if (displayValue === false) return '0';
+      if (displayValue === null || displayValue === undefined) return '';
+      return String(displayValue);
+    }
+
+    function getFilterValueLabel(value) {
+      if (value === '') return '(Leer)';
+      if (value === '1') return '1';
+      if (value === '0') return '0';
+      return value;
+    }
+
+    function getColumnDistinctFilterValues(sheet, col) {
+      const rowNums = [...sheet.rows].sort((a, b) => a - b);
+      const values = new Map();
+
+      for (const rowNum of rowNums) {
+        const cell = sheet.cells.get(`${col}|${rowNum}`) || null;
+        const rawValue = getCellFilterValue(cell);
+        if (!values.has(rawValue)) {
+          values.set(rawValue, {
+            value: rawValue,
+            label: getFilterValueLabel(rawValue),
+            sortMeta: getCellSortMeta(cell)
+          });
+        }
+      }
+
+      return [...values.values()].sort((a, b) => {
+        const result = compareCellValues(
+          a.value === '' ? null : { value_type: a.sortMeta.type === 'number' ? 'REAL' : 'TEXT', value: a.value },
+          b.value === '' ? null : { value_type: b.sortMeta.type === 'number' ? 'REAL' : 'TEXT', value: b.value }
+        );
+        if (result !== 0) return result;
+        return a.label.localeCompare(b.label, 'de-DE', { numeric: true, sensitivity: 'base' });
+      });
+    }
+
+    function rowMatchesFilters(sheet, sheetName, rowNum) {
+      const filters = getSheetFilters(sheetName);
+      if (!filters.size) return true;
+
+      for (const [col, allowedValues] of filters.entries()) {
+        if (!allowedValues) continue;
+        if (!allowedValues.length) return false;
+        const cell = sheet.cells.get(`${col}|${rowNum}`) || null;
+        const value = getCellFilterValue(cell);
+        if (!allowedValues.includes(value)) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    function hideFilterMenu() {
+      if (!filterMenu) return;
+      filterMenu.style.display = 'none';
+      filterMenu.innerHTML = '';
+      currentFilterMenu = null;
+    }
+
+    function positionFilterMenu(x, y) {
+      if (!filterMenu) return;
+      const padding = 8;
+      filterMenu.style.left = `${x}px`;
+      filterMenu.style.top = `${y}px`;
+      filterMenu.style.display = 'block';
+
+      const rect = filterMenu.getBoundingClientRect();
+      let left = x;
+      let top = y;
+
+      if (rect.right > window.innerWidth - padding) {
+        left = Math.max(padding, window.innerWidth - rect.width - padding);
+      }
+      if (rect.bottom > window.innerHeight - padding) {
+        top = Math.max(padding, window.innerHeight - rect.height - padding);
+      }
+
+      filterMenu.style.left = `${left}px`;
+      filterMenu.style.top = `${top}px`;
+    }
+
+    function openFilterMenu(sheetName, col, anchorX, anchorY) {
+      if (!filterMenu) return;
+      const sheet = workbook.get(sheetName);
+      if (!sheet) return;
+
+      const distinctValues = getColumnDistinctFilterValues(sheet, col);
+      const activeValues = getColumnFilterValues(sheetName, col);
+      const selectedValues = new Set(activeValues || distinctValues.map(item => item.value));
+
+      filterMenu.innerHTML = `
+        <div class="filter-menu-header">Filter: ${escapeHtml(col)}</div>
+        <div class="filter-menu-actions">
+          <button type="button" class="filter-menu-btn" data-filter-action="select-all">Alle</button>
+          <button type="button" class="filter-menu-btn" data-filter-action="clear-all">Keine</button>
+          <button type="button" class="filter-menu-btn" data-filter-action="reset">Zurücksetzen</button>
+        </div>
+        <div class="filter-menu-list"></div>
+        <div class="filter-menu-footer">
+          <button type="button" class="filter-menu-btn" data-filter-action="apply">Anwenden</button>
+          <button type="button" class="filter-menu-btn" data-filter-action="cancel">Schließen</button>
+        </div>
+      `;
+
+      const listEl = filterMenu.querySelector('.filter-menu-list');
+      for (const item of distinctValues) {
+        const row = document.createElement('label');
+        row.className = 'filter-menu-item';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.dataset.filterValue = item.value;
+        checkbox.checked = selectedValues.has(item.value);
+
+        const label = document.createElement('span');
+        label.className = 'filter-menu-label';
+        label.textContent = item.label;
+
+        row.appendChild(checkbox);
+        row.appendChild(label);
+        listEl.appendChild(row);
+      }
+
+      currentFilterMenu = { sheetName, col };
+      positionFilterMenu(anchorX, anchorY);
+
+      const getCheckedValues = () => [...filterMenu.querySelectorAll('input[data-filter-value]:checked')].map(el => el.dataset.filterValue || '');
+      const setAllChecked = (checked) => {
+        for (const checkbox of filterMenu.querySelectorAll('input[data-filter-value]')) {
+          checkbox.checked = checked;
+        }
+      };
+
+      for (const button of filterMenu.querySelectorAll('button[data-filter-action]')) {
+        button.addEventListener('click', () => {
+          const action = button.getAttribute('data-filter-action');
+          if (action === 'select-all') {
+            setAllChecked(true);
+            return;
+          }
+          if (action === 'clear-all') {
+            setAllChecked(false);
+            return;
+          }
+          if (action === 'reset') {
+            clearColumnFilter(sheetName, col);
+            hideFilterMenu();
+            renderSheet(sheetName);
+            return;
+          }
+          if (action === 'cancel') {
+            hideFilterMenu();
+            return;
+          }
+          if (action === 'apply') {
+            const checkedValues = getCheckedValues();
+            const allValues = distinctValues.map(item => item.value);
+            if (checkedValues.length === allValues.length) {
+              clearColumnFilter(sheetName, col);
+            } else {
+              setColumnFilterValues(sheetName, col, checkedValues);
+            }
+            hideFilterMenu();
+            renderSheet(sheetName);
+          }
+        });
+      }
+    }
+
 
     function getSheetSortState(sheetName) {
       return sheetSortState.get(sheetName) || { col: null, direction: null };
@@ -771,17 +1066,18 @@
       });
     }
 
-    function getSortedRowNumbers(sheet, sheetName) {
+    function getVisibleRowNumbers(sheet, sheetName) {
       const baseRowNums = [...sheet.rows].sort((a, b) => a - b);
+      const filteredRowNums = baseRowNums.filter(rowNum => rowMatchesFilters(sheet, sheetName, rowNum));
       const sortState = getSheetSortState(sheetName);
 
       if (!sortState.col || !sortState.direction) {
-        return baseRowNums;
+        return filteredRowNums;
       }
 
       const factor = sortState.direction === 'desc' ? -1 : 1;
 
-      return [...baseRowNums].sort((a, b) => {
+      return [...filteredRowNums].sort((a, b) => {
         const aCell = sheet.cells.get(`${sortState.col}|${a}`) || null;
         const bCell = sheet.cells.get(`${sortState.col}|${b}`) || null;
         const result = compareCellValues(aCell, bCell);
@@ -1525,10 +1821,15 @@
 
       const cols = sortColumns(sheet.cols);
       const sortState = getSheetSortState(sheetName);
-      const rowNums = getSortedRowNumbers(sheet, sheetName);
+      const rowNums = getVisibleRowNumbers(sheet, sheetName);
 
-      if (!cols.length || !rowNums.length) {
-        sheetWrapEl.innerHTML = '<div class="empty">Dieses Blatt enthält keine darstellbaren Zeilen oder Spalten.</div>';
+      if (!cols.length) {
+        sheetWrapEl.innerHTML = '<div class="empty">Dieses Blatt enthält keine darstellbaren Spalten.</div>';
+        return;
+      }
+
+      if (!rowNums.length) {
+        sheetWrapEl.innerHTML = '<div class="empty">Keine Zeilen entsprechen dem aktiven Filter.</div>';
         return;
       }
 
@@ -1663,6 +1964,15 @@
           setSheetSortState(sheetName, col, nextDirection);
           renderSheet(sheetName);
         });
+
+        header.addEventListener('contextmenu', (event) => {
+          if (event.target.closest('.col-resizer')) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const col = header.dataset.col;
+          if (!col) return;
+          openFilterMenu(sheetName, col, event.clientX, event.clientY);
+        });
       }
 
       for (const resizer of sheetWrapEl.querySelectorAll('.col-resizer[data-resize-col]')) {
@@ -1686,6 +1996,19 @@
 
     document.addEventListener('scroll', () => hideCustomTooltip(), true);
     document.addEventListener('mousedown', () => hideCustomTooltip());
+
+    document.addEventListener('click', (event) => {
+      if (!filterMenu || filterMenu.style.display !== 'block') return;
+      if (filterMenu.contains(event.target)) return;
+      hideFilterMenu();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        hideFilterMenu();
+        hideTooltip();
+      }
+    });
 
     async function ensureSqlJs() {
       if (!SQL) {
