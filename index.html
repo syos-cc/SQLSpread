@@ -421,6 +421,24 @@
       cursor: row-resize !important;
       user-select: none !important;
     }
+
+    .custom-tooltip {
+      position: fixed;
+      display: none;
+      max-width: 360px;
+      padding: 6px 8px;
+      background: #fff8c4;
+      color: #222;
+      border: 1px solid #c9b458;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+      font: 13px Calibri, "Segoe UI", Arial, sans-serif;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      word-break: break-word;
+      pointer-events: none;
+      z-index: 9999;
+    }
   </style>
 </head>
 <body>
@@ -446,6 +464,8 @@
     <div class="tabs" id="tabs"></div>
   </div>
 
+  <div id="customTooltip" class="custom-tooltip"></div>
+
   <script src="sql-wasm.js"></script>
   <script>
     let SQL;
@@ -464,6 +484,7 @@
     const nameBox = document.getElementById('nameBox');
     const formulaBox = document.getElementById('formulaBox');
     const saveBtn = document.getElementById('saveBtn');
+    const customTooltip = document.getElementById('customTooltip');
 
     const DEFAULTS = {
       TAB: {
@@ -645,6 +666,14 @@
         default:
           return raw ?? '';
       }
+    }
+
+    function normalizeNoticeValue(value) {
+      if (value === null || value === undefined) return '';
+      const text = String(value).trim();
+      if (!text) return '';
+      if (text.toUpperCase() === 'NULL') return '';
+      return text;
     }
 
     function buildStyleString(styleMap) {
@@ -1296,6 +1325,47 @@
       document.addEventListener('mouseup', onMouseUp);
     }
 
+    function showCustomTooltip(text, mouseEvent) {
+      if (!customTooltip) return;
+
+      const content = normalizeNoticeValue(text);
+      if (!content) {
+        hideCustomTooltip();
+        return;
+      }
+
+      customTooltip.textContent = content;
+      customTooltip.style.display = 'block';
+      positionCustomTooltip(mouseEvent);
+    }
+
+    function positionCustomTooltip(mouseEvent) {
+      if (!customTooltip || customTooltip.style.display === 'none') return;
+
+      const offset = 14;
+      const rect = customTooltip.getBoundingClientRect();
+      let left = mouseEvent.clientX + offset;
+      let top = mouseEvent.clientY + offset;
+
+      if (left + rect.width > window.innerWidth - 8) {
+        left = window.innerWidth - rect.width - 8;
+      }
+      if (top + rect.height > window.innerHeight - 8) {
+        top = mouseEvent.clientY - rect.height - offset;
+      }
+      if (left < 8) left = 8;
+      if (top < 8) top = 8;
+
+      customTooltip.style.left = `${left}px`;
+      customTooltip.style.top = `${top}px`;
+    }
+
+    function hideCustomTooltip() {
+      if (!customTooltip) return;
+      customTooltip.style.display = 'none';
+      customTooltip.textContent = '';
+    }
+
     function renderTabs() {
       if (!tabsEl) return;
 
@@ -1398,8 +1468,8 @@
           const cell = sheet.cells.get(`${col}|${rowNum}`) || null;
           const colDef = sheet.colDefs.get(col) || {};
           const value = cellDisplayValue(cell);
-          const titleValue = withDefault(cell?.notice, DEFAULTS.CELL.notice);
-          const title = titleValue ? ` title="${escapeHtml(titleValue)}"` : '';
+          const titleValue = normalizeNoticeValue(withDefault(cell?.notice, DEFAULTS.CELL.notice));
+          const noticeAttr = titleValue ? ` data-notice="${escapeHtml(titleValue)}"` : '';
           const style = buildCellStyle(cell, rowDef, colDef);
           const cellRef = `${col}${rowNum}`;
           const editable = isCellEditable(cell, rowDef, colDef);
@@ -1428,7 +1498,7 @@
 
           const classAttr = tdClass ? ` class="${tdClass}"` : '';
 
-          html += `<td${classAttr} data-cell="${escapeHtml(cellRef)}" data-value="${escapeHtml(String(value))}" data-editable="${editable ? 'true' : 'false'}"${title}${style ? ` style="${escapeHtml(style)}"` : ''}>${renderedValue}</td>`;
+          html += `<td${classAttr} data-cell="${escapeHtml(cellRef)}" data-value="${escapeHtml(String(value))}" data-editable="${editable ? 'true' : 'false'}"${noticeAttr}${style ? ` style="${escapeHtml(style)}"` : ''}>${renderedValue}</td>`;
         }
 
         html += '</tr>';
@@ -1440,6 +1510,15 @@
       for (const td of sheetWrapEl.querySelectorAll('td[data-cell]')) {
         td.addEventListener('click', () => selectCell(td));
         td.addEventListener('dblclick', () => activateCellEditor(td));
+        td.addEventListener('mouseenter', (event) => {
+          const notice = td.dataset.notice || '';
+          if (notice) showCustomTooltip(notice, event);
+        });
+        td.addEventListener('mousemove', (event) => {
+          const notice = td.dataset.notice || '';
+          if (notice) positionCustomTooltip(event);
+        });
+        td.addEventListener('mouseleave', () => hideCustomTooltip());
       }
 
       for (const select of sheetWrapEl.querySelectorAll('select.cell-dropdown[data-dropdown-cell]')) {
@@ -1474,6 +1553,9 @@
         });
       }
     }
+
+    document.addEventListener('scroll', () => hideCustomTooltip(), true);
+    document.addEventListener('mousedown', () => hideCustomTooltip());
 
     async function ensureSqlJs() {
       if (!SQL) {

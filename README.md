@@ -1,8 +1,6 @@
 # TODO
 
--- samstag im SQL
-
--- mouseover text einfügen wenn notice feld content nicht null ist
+- Sortieren nach Spalten
 
 - Spalte hinzu fügen
 - Zeile hinzu fügen
@@ -13,7 +11,6 @@
 - Einfärben von Tabellenblatt mittels menü
 - Rahmen ( border ) zeichnen
 - Zeilen und spalten freezen beim scrollen
-- Sortieren nach Spalten
 - Auswählen in spalten
 - obere menüs in tabs grupieren
   - File
