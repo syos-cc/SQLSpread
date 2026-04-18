@@ -1,6 +1,6 @@
 # TODO
 
-- Zeilen und spalten freezen beim scrollen
+- az sql views erstellen
 
 - Spalte hinzu fügen
 - Zeile hinzu fügen
