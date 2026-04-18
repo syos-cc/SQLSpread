@@ -196,34 +196,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
-      padding: 2px 16px 2px 6px;
-    }
-
-    .col-header-label {
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .col-header.sortable {
-      cursor: pointer;
-    }
-
-    .col-header.sortable:hover {
-      background: #e8ecef !important;
-    }
-
-    .sort-indicator {
-      min-width: 10px;
-      font-size: 11px;
-      line-height: 1;
-      color: #666;
-      user-select: none;
-    }
-
-    .col-header.sorted .sort-indicator {
-      color: var(--excel-green);
-      font-weight: 700;
+      padding: 2px 10px 2px 6px;
     }
 
     .col-resizer {
@@ -448,119 +421,16 @@
       cursor: row-resize !important;
       user-select: none !important;
     }
-
-    .custom-tooltip {
-      position: fixed;
-      display: none;
-      max-width: 360px;
-      padding: 6px 8px;
-      background: #fff8c4;
-      color: #222;
-      border: 1px solid #c9b458;
-      border-radius: 4px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-      font: 13px Calibri, "Segoe UI", Arial, sans-serif;
-      line-height: 1.35;
-      white-space: pre-wrap;
-      word-break: break-word;
-      pointer-events: none;
-      z-index: 9999;
-    }
-
-
-    .filter-menu {
-      position: fixed;
-      display: none;
-      min-width: 240px;
-      max-width: 320px;
-      background: #ffffff;
-      border: 1px solid #c8c8c8;
-      border-radius: 6px;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
-      z-index: 10000;
-      padding: 8px;
-      font: 13px Calibri, "Segoe UI", Arial, sans-serif;
-      color: #222;
-    }
-
-    .filter-menu-header {
-      font-weight: 600;
-      margin-bottom: 8px;
-    }
-
-    .filter-menu-actions {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 8px;
-      flex-wrap: wrap;
-    }
-
-    .filter-menu-btn {
-      min-height: 28px;
-      padding: 0 10px;
-      border: 1px solid #bfbfbf;
-      background: #ffffff;
-      border-radius: 4px;
-      cursor: pointer;
-      font: inherit;
-      color: inherit;
-    }
-
-    .filter-menu-btn:hover {
-      background: #f1f1f1;
-    }
-
-    .filter-menu-list {
-      max-height: 240px;
-      overflow: auto;
-      border: 1px solid #dddddd;
-      background: #fff;
-      padding: 4px;
-      margin-bottom: 8px;
-    }
-
-    .filter-menu-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 2px;
-      cursor: pointer;
-    }
-
-    .filter-menu-item:hover {
-      background: #f7f7f7;
-    }
-
-    .filter-menu-item input {
-      margin: 0;
-    }
-
-    .filter-menu-label {
-      flex: 1;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .filter-menu-footer {
-      display: flex;
-      justify-content: space-between;
-      gap: 6px;
-    }
-
-    .col-header.filter-active .col-header-inner {
-      background: linear-gradient(to bottom, #fefefe, #eef7ee);
-    }
-
   </style>
 </head>
 <body>
   <div class="topbar">
-    <label for="dbFile" class="file-label" id="openDbLabel">SQLite-Datei auswählen</label>
+    <label for="dbFile" class="file-label" id="openDbLabel">Open File</label>
     <input type="file" id="dbFile" accept=".sqlite,.db,.sqlite3,.db3,.bin,.dat,.sqlspread" />
-    <button class="btn" id="saveBtn" type="button">Datenbank speichern</button>
-    <div id="status" class="status">Keine Datei geladen</div>
+    <button class="btn" id="saveBtn" type="button">Save File</button>
+    <button class="btn" id="htmlExportBtn" type="button">HTML</button>
+    <button class="btn" id="csvExportBtn" type="button">CSV</button>
+    <div id="status" class="status">No file loaded</div>
   </div>
 
   <div class="formula-bar">
@@ -571,16 +441,12 @@
   <div class="main">
     <div class="sheet-wrap" id="sheetWrap">
       <div class="empty">
-        SQLite-Datei laden. Erwartet werden die Tabellen <code>tabs</code>, <code>lines</code>, <code>parts</code> und <code>cells</code>.
+        Load a SQLite file. Expected tables: <code>tabs</code>, <code>lines</code>, <code>parts</code>, and <code>cells</code>.
         <div class="muted">Tabs = <code>name</code>, Spalten = <code>part</code>, Zeilen = <code>line</code>.</div>
       </div>
     </div>
     <div class="tabs" id="tabs"></div>
   </div>
-
-  <div id="customTooltip" class="custom-tooltip"></div>
-
-  <div id="filterMenu" class="filter-menu"></div>
 
   <script src="sql-wasm.js"></script>
   <script>
@@ -591,12 +457,6 @@
     let currentDbPath = null;
     let currentDbName = 'database.sqlite';
     let currentSelectedCellRef = null;
-    const sheetSortState = new Map();
-    const sheetFilterState = new Map();
-    let currentFilterMenu = null;
-    const undoStack = [];
-    const redoStack = [];
-    const CONFIG_UI_STATE_KEY = 'sqlspread.ui_state';
 
     const statusEl = document.getElementById('status');
     const tabsEl = document.getElementById('tabs');
@@ -606,8 +466,8 @@
     const nameBox = document.getElementById('nameBox');
     const formulaBox = document.getElementById('formulaBox');
     const saveBtn = document.getElementById('saveBtn');
-    const customTooltip = document.getElementById('customTooltip');
-    const filterMenu = document.getElementById('filterMenu');
+    const htmlExportBtn = document.getElementById('htmlExportBtn');
+    const csvExportBtn = document.getElementById('csvExportBtn');
 
     const DEFAULTS = {
       TAB: {
@@ -791,471 +651,6 @@
       }
     }
 
-    function normalizeNoticeValue(value) {
-      if (value === null || value === undefined) return '';
-      const text = String(value).trim();
-      if (!text) return '';
-      if (text.toUpperCase() === 'NULL') return '';
-      return text;
-    }
-
-    function getCssPixelValue(value, fallback) {
-      const source = value === null || value === undefined || value === '' ? fallback : value;
-      const parsed = parseFloat(String(source));
-      return Number.isFinite(parsed) ? parsed : fallback;
-    }
-
-    function isFrozenRow(rowDef = {}) {
-      return isBooleanTrue(rowDef?.freeze);
-    }
-
-    function isFrozenColumn(colDef = {}) {
-      return isBooleanTrue(colDef?.freeze);
-    }
-
-    function getFrozenRowNumbers(sheet) {
-      return [...sheet.rows].sort((a, b) => a - b).filter(rowNum => isFrozenRow(sheet.rowDefs.get(rowNum) || {}));
-    }
-
-    function getFrozenColumns(sheet) {
-      return sortColumns(sheet.cols).filter(col => isFrozenColumn(sheet.colDefs.get(col) || {}));
-    }
-
-    function getOrderedColumns(sheet) {
-      const allCols = sortColumns(sheet.cols);
-      const frozenCols = getFrozenColumns(sheet);
-      const frozenSet = new Set(frozenCols);
-      return [...frozenCols, ...allCols.filter(col => !frozenSet.has(col))];
-    }
-
-    function sanitizeSheetUiState(sheetName, sheet) {
-      if (!sheetName || !sheet) return;
-
-      const frozenCols = new Set(getFrozenColumns(sheet));
-      const sortState = sheetSortState.get(sheetName);
-      if (sortState?.col && frozenCols.has(sortState.col)) {
-        sheetSortState.delete(sheetName);
-      }
-
-      const filters = sheetFilterState.get(sheetName);
-      if (filters instanceof Map && filters.size) {
-        const sanitized = new Map();
-        for (const [col, values] of filters.entries()) {
-          if (frozenCols.has(col)) continue;
-          sanitized.set(col, values);
-        }
-        if (sanitized.size) {
-          sheetFilterState.set(sheetName, sanitized);
-        } else {
-          sheetFilterState.delete(sheetName);
-        }
-      }
-    }
-
-    function sanitizeAllUiState() {
-      for (const [sheetName, sheet] of workbook.entries()) {
-        sanitizeSheetUiState(sheetName, sheet);
-      }
-    }
-
-
-    function hasConfigTable(database) {
-      return hasTable(database, 'config');
-    }
-
-    function saveUiStateToConfig() {
-      if (!db || !hasConfigTable(db)) return;
-
-      const state = {
-        version: 1,
-        sort: Object.fromEntries(sheetSortState.entries()),
-        filter: Object.fromEntries(
-          [...sheetFilterState.entries()].map(([sheetName, filters]) => [
-            sheetName,
-            Object.fromEntries(filters.entries())
-          ])
-        )
-      };
-
-      const payload = JSON.stringify(state);
-      const existing = queryTable(
-        db,
-        `SELECT key FROM config WHERE key = ${JSON.stringify(CONFIG_UI_STATE_KEY)} LIMIT 1`
-      );
-
-      if (existing.length) {
-        db.run(
-          `UPDATE config SET value = ? WHERE key = ?`,
-          [payload, CONFIG_UI_STATE_KEY]
-        );
-      } else {
-        db.run(
-          `INSERT INTO config (key, value) VALUES (?, ?)`,
-          [CONFIG_UI_STATE_KEY, payload]
-        );
-      }
-    }
-
-    function loadUiStateFromConfig() {
-      sheetSortState.clear();
-      sheetFilterState.clear();
-
-      if (!db || !hasConfigTable(db)) return;
-
-      const rows = queryTable(
-        db,
-        `SELECT value FROM config WHERE key = ${JSON.stringify(CONFIG_UI_STATE_KEY)} LIMIT 1`
-      );
-
-      if (!rows.length || rows[0].value === null || rows[0].value === undefined || rows[0].value === '') {
-        return;
-      }
-
-      try {
-        const state = JSON.parse(String(rows[0].value));
-
-        if (state && state.sort && typeof state.sort === 'object') {
-          for (const [sheetName, sortState] of Object.entries(state.sort)) {
-            if (!sortState || !sortState.col || !sortState.direction) continue;
-            sheetSortState.set(sheetName, {
-              col: String(sortState.col),
-              direction: sortState.direction === 'desc' ? 'desc' : 'asc'
-            });
-          }
-        }
-
-        if (state && state.filter && typeof state.filter === 'object') {
-          for (const [sheetName, filterState] of Object.entries(state.filter)) {
-            if (!filterState || typeof filterState !== 'object') continue;
-            const filters = new Map();
-            for (const [col, values] of Object.entries(filterState)) {
-              if (!Array.isArray(values)) continue;
-              filters.set(String(col), values.map(value => String(value ?? '')));
-            }
-            if (filters.size) {
-              sheetFilterState.set(sheetName, filters);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('UI state in config could not be parsed:', error);
-      }
-    }
-
-    function getSheetFilters(sheetName) {
-      return sheetFilterState.get(sheetName) || new Map();
-    }
-
-    function getColumnFilterValues(sheetName, col) {
-      const filters = getSheetFilters(sheetName);
-      return filters.get(col) || null;
-    }
-
-    function setColumnFilterValues(sheetName, col, values) {
-      if (!sheetName || !col) return;
-      const filters = new Map(getSheetFilters(sheetName));
-      if (values === null || values === undefined) {
-        filters.delete(col);
-      } else {
-        filters.set(col, [...values]);
-      }
-      if (filters.size) {
-        sheetFilterState.set(sheetName, filters);
-      } else {
-        sheetFilterState.delete(sheetName);
-      }
-      saveUiStateToConfig();
-    }
-
-    function clearColumnFilter(sheetName, col) {
-      setColumnFilterValues(sheetName, col, null);
-    }
-
-    function getCellFilterValue(cell) {
-      const displayValue = cellDisplayValue(cell);
-      if (displayValue === true) return '1';
-      if (displayValue === false) return '0';
-      if (displayValue === null || displayValue === undefined) return '';
-      return String(displayValue);
-    }
-
-    function getFilterValueLabel(value) {
-      if (value === '') return '(Leer)';
-      if (value === '1') return '1';
-      if (value === '0') return '0';
-      return value;
-    }
-
-    function getColumnDistinctFilterValues(sheet, col) {
-      const rowNums = [...sheet.rows].sort((a, b) => a - b).filter(rowNum => !isFrozenRow(sheet.rowDefs.get(rowNum) || {}));
-      const values = new Map();
-
-      for (const rowNum of rowNums) {
-        const cell = sheet.cells.get(`${col}|${rowNum}`) || null;
-        const rawValue = getCellFilterValue(cell);
-        if (!values.has(rawValue)) {
-          values.set(rawValue, {
-            value: rawValue,
-            label: getFilterValueLabel(rawValue),
-            sortMeta: getCellSortMeta(cell)
-          });
-        }
-      }
-
-      return [...values.values()].sort((a, b) => {
-        const result = compareCellValues(
-          a.value === '' ? null : { value_type: a.sortMeta.type === 'number' ? 'REAL' : 'TEXT', value: a.value },
-          b.value === '' ? null : { value_type: b.sortMeta.type === 'number' ? 'REAL' : 'TEXT', value: b.value }
-        );
-        if (result !== 0) return result;
-        return a.label.localeCompare(b.label, 'de-DE', { numeric: true, sensitivity: 'base' });
-      });
-    }
-
-    function rowMatchesFilters(sheet, sheetName, rowNum) {
-      if (isFrozenRow(sheet.rowDefs.get(rowNum) || {})) return true;
-
-      const filters = getSheetFilters(sheetName);
-      if (!filters.size) return true;
-
-      for (const [col, allowedValues] of filters.entries()) {
-        if (isFrozenColumn(sheet.colDefs.get(col) || {})) continue;
-        if (!allowedValues) continue;
-        if (!allowedValues.length) return false;
-        const cell = sheet.cells.get(`${col}|${rowNum}`) || null;
-        const value = getCellFilterValue(cell);
-        if (!allowedValues.includes(value)) {
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    function hideFilterMenu() {
-      if (!filterMenu) return;
-      filterMenu.style.display = 'none';
-      filterMenu.innerHTML = '';
-      currentFilterMenu = null;
-    }
-
-    function positionFilterMenu(x, y) {
-      if (!filterMenu) return;
-      const padding = 8;
-      filterMenu.style.left = `${x}px`;
-      filterMenu.style.top = `${y}px`;
-      filterMenu.style.display = 'block';
-
-      const rect = filterMenu.getBoundingClientRect();
-      let left = x;
-      let top = y;
-
-      if (rect.right > window.innerWidth - padding) {
-        left = Math.max(padding, window.innerWidth - rect.width - padding);
-      }
-      if (rect.bottom > window.innerHeight - padding) {
-        top = Math.max(padding, window.innerHeight - rect.height - padding);
-      }
-
-      filterMenu.style.left = `${left}px`;
-      filterMenu.style.top = `${top}px`;
-    }
-
-    function openFilterMenu(sheetName, col, anchorX, anchorY) {
-      if (!filterMenu) return;
-      const sheet = workbook.get(sheetName);
-      if (!sheet) return;
-      if (isFrozenColumn(sheet.colDefs.get(col) || {})) return;
-
-      const distinctValues = getColumnDistinctFilterValues(sheet, col);
-      const activeValues = getColumnFilterValues(sheetName, col);
-      const selectedValues = new Set(activeValues || distinctValues.map(item => item.value));
-
-      filterMenu.innerHTML = `
-        <div class="filter-menu-header">Filter: ${escapeHtml(col)}</div>
-        <div class="filter-menu-actions">
-          <button type="button" class="filter-menu-btn" data-filter-action="select-all">Alle</button>
-          <button type="button" class="filter-menu-btn" data-filter-action="clear-all">Keine</button>
-          <button type="button" class="filter-menu-btn" data-filter-action="reset">Zurücksetzen</button>
-        </div>
-        <div class="filter-menu-list"></div>
-        <div class="filter-menu-footer">
-          <button type="button" class="filter-menu-btn" data-filter-action="apply">Anwenden</button>
-          <button type="button" class="filter-menu-btn" data-filter-action="cancel">Schließen</button>
-        </div>
-      `;
-
-      const listEl = filterMenu.querySelector('.filter-menu-list');
-      for (const item of distinctValues) {
-        const row = document.createElement('label');
-        row.className = 'filter-menu-item';
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.dataset.filterValue = item.value;
-        checkbox.checked = selectedValues.has(item.value);
-
-        const label = document.createElement('span');
-        label.className = 'filter-menu-label';
-        label.textContent = item.label;
-
-        row.appendChild(checkbox);
-        row.appendChild(label);
-        listEl.appendChild(row);
-      }
-
-      currentFilterMenu = { sheetName, col };
-      positionFilterMenu(anchorX, anchorY);
-
-      const getCheckedValues = () => [...filterMenu.querySelectorAll('input[data-filter-value]:checked')].map(el => el.dataset.filterValue || '');
-      const setAllChecked = (checked) => {
-        for (const checkbox of filterMenu.querySelectorAll('input[data-filter-value]')) {
-          checkbox.checked = checked;
-        }
-      };
-
-      for (const button of filterMenu.querySelectorAll('button[data-filter-action]')) {
-        button.addEventListener('click', () => {
-          const action = button.getAttribute('data-filter-action');
-          if (action === 'select-all') {
-            setAllChecked(true);
-            return;
-          }
-          if (action === 'clear-all') {
-            setAllChecked(false);
-            return;
-          }
-          if (action === 'reset') {
-            clearColumnFilter(sheetName, col);
-            hideFilterMenu();
-            renderSheet(sheetName);
-            return;
-          }
-          if (action === 'cancel') {
-            hideFilterMenu();
-            return;
-          }
-          if (action === 'apply') {
-            const checkedValues = getCheckedValues();
-            const allValues = distinctValues.map(item => item.value);
-            if (checkedValues.length === allValues.length) {
-              clearColumnFilter(sheetName, col);
-            } else {
-              setColumnFilterValues(sheetName, col, checkedValues);
-            }
-            hideFilterMenu();
-            renderSheet(sheetName);
-          }
-        });
-      }
-    }
-
-
-    function getSheetSortState(sheetName) {
-      return sheetSortState.get(sheetName) || { col: null, direction: null };
-    }
-
-    function setSheetSortState(sheetName, col, direction) {
-      if (!sheetName) return;
-      if (!col || !direction) {
-        sheetSortState.delete(sheetName);
-        saveUiStateToConfig();
-        return;
-      }
-      sheetSortState.set(sheetName, { col, direction });
-      saveUiStateToConfig();
-    }
-
-    function getSortIndicator(direction) {
-      if (direction === 'asc') return '▲';
-      if (direction === 'desc') return '▼';
-      return '';
-    }
-
-    function getNextSortDirection(sheetName, col) {
-      const sheet = workbook.get(sheetName);
-      if (isFrozenColumn(sheet?.colDefs.get(col) || {})) return null;
-
-      const current = getSheetSortState(sheetName);
-      if (current.col !== col) return 'asc';
-      if (current.direction === 'asc') return 'desc';
-      if (current.direction === 'desc') return null;
-      return 'asc';
-    }
-
-    function getCellSortMeta(cell) {
-      if (!cell) return { type: 'empty', value: '' };
-
-      const valueType = String(cell.value_type || 'TEXT').toUpperCase();
-      const displayValue = cellDisplayValue(cell);
-
-      if (valueType === 'BOOLEAN') {
-        return { type: 'number', value: displayValue === true ? 1 : 0 };
-      }
-
-      if (valueType === 'INTEGER' || valueType === 'REAL') {
-        const num = Number(displayValue);
-        if (!Number.isNaN(num)) return { type: 'number', value: num };
-      }
-
-      return { type: 'text', value: String(displayValue ?? '').trim().toLocaleLowerCase('de-DE') };
-    }
-
-    function compareCellValues(aCell, bCell) {
-      const a = getCellSortMeta(aCell);
-      const b = getCellSortMeta(bCell);
-
-      const aEmpty = a.type === 'empty' || a.value === '';
-      const bEmpty = b.type === 'empty' || b.value === '';
-
-      if (aEmpty && bEmpty) return 0;
-      if (aEmpty) return 1;
-      if (bEmpty) return -1;
-
-      if (a.type === 'number' && b.type === 'number') {
-        return a.value - b.value;
-      }
-
-      return String(a.value).localeCompare(String(b.value), 'de-DE', {
-        numeric: true,
-        sensitivity: 'base'
-      });
-    }
-
-    function getVisibleRowNumbers(sheet, sheetName) {
-      const baseRowNums = [...sheet.rows].sort((a, b) => a - b);
-      const frozenRowNums = [];
-      const normalRowNums = [];
-
-      for (const rowNum of baseRowNums) {
-        if (isFrozenRow(sheet.rowDefs.get(rowNum) || {})) {
-          frozenRowNums.push(rowNum);
-        } else {
-          normalRowNums.push(rowNum);
-        }
-      }
-
-      const filteredRowNums = normalRowNums.filter(rowNum => rowMatchesFilters(sheet, sheetName, rowNum));
-      const sortState = getSheetSortState(sheetName);
-      const canSort = !!(sortState.col && sortState.direction && !isFrozenColumn(sheet.colDefs.get(sortState.col) || {}));
-
-      if (!canSort) {
-        return [...frozenRowNums, ...filteredRowNums];
-      }
-
-      const factor = sortState.direction === 'desc' ? -1 : 1;
-
-      const sortedRows = [...filteredRowNums].sort((a, b) => {
-        const aCell = sheet.cells.get(`${sortState.col}|${a}`) || null;
-        const bCell = sheet.cells.get(`${sortState.col}|${b}`) || null;
-        const result = compareCellValues(aCell, bCell);
-        if (result !== 0) return result * factor;
-        return a - b;
-      });
-
-      return [...frozenRowNums, ...sortedRows];
-    }
-
     function buildStyleString(styleMap) {
       return Object.entries(styleMap)
         .filter(([, value]) => value !== null && value !== undefined && value !== '')
@@ -1343,7 +738,7 @@
       const required = ['cells', 'tabs', 'lines', 'parts'];
       const missing = required.filter(name => !hasTable(database, name));
       if (missing.length) {
-        throw new Error(`Die SQLite-Datei enthält nicht alle benötigten Tabellen: ${missing.join(', ')}`);
+        throw new Error(`The SQLite file does not contain all required tables: ${missing.join(', ')}`);
       }
     }
 
@@ -1364,13 +759,13 @@
         `),
         rows: queryTable(database, `
           SELECT
-            line AS y, tab AS z, height, background_color, visibility, user_select, freeze
+            line AS y, tab AS z, height, background_color, visibility, user_select
           FROM lines
           ORDER BY tab, line
         `),
         columns: queryTable(database, `
           SELECT
-            part AS x, tab AS z, width, background_color, visibility, user_select, freeze
+            part AS x, tab AS z, width, background_color, visibility, user_select
           FROM parts
           ORDER BY tab, part
         `),
@@ -1469,167 +864,14 @@
       return getCellRecord(currentSheet, currentSelectedCellRef);
     }
 
-    function getCellEditorValue(cell) {
-      if (!cell) return '';
-
-      const valueType = String(cell.value_type || 'TEXT').toUpperCase();
-
-      if (valueType === 'BOOLEAN') return isBooleanTrue(cell.value);
-      if (valueType === 'JSON' && isJsonDropdownCell(cell)) return getJsonDropdownSelected(cell);
-      return String(cellDisplayValue(cell) ?? '');
-    }
-
-    function valuesEqualForHistory(a, b) {
-      return JSON.stringify(a) === JSON.stringify(b);
-    }
-
-    async function applyCellValueChange(sheetName, col, rowNum, newValue, options = {}) {
-      const { recordHistory = true, statusMessage = `${currentDbName} geändert`, selectCellRef = true } = options;
-      const meta = getCellRecord(sheetName, `${col}${rowNum}`);
-      if (!meta || !meta.cell) throw new Error('Zelle nicht gefunden.');
-
-      const oldValue = getCellEditorValue(meta.cell);
-      if (valuesEqualForHistory(oldValue, newValue)) {
-        return false;
-      }
-
-      setCellValueInDb(sheetName, col, rowNum, newValue);
-
-      if (recordHistory) {
-        undoStack.push({ sheetName, col, rowNum, oldValue, newValue });
-        redoStack.length = 0;
-      }
-
-      await reloadWorkbookFromDb(statusMessage);
-
-      if (selectCellRef) {
-        const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${col}${rowNum}"]`);
-        if (updatedTd) selectCell(updatedTd);
-      }
-
-      return true;
-    }
-
-    async function undoLastChange() {
-      const entry = undoStack.pop();
-      if (!entry) {
-        setStatus('Nichts zum Rückgängig machen');
-        return;
-      }
-
-      try {
-        await applyCellValueChange(entry.sheetName, entry.col, entry.rowNum, entry.oldValue, {
-          recordHistory: false,
-          statusMessage: `${currentDbName} geändert (Rückgängig)`
-        });
-        redoStack.push(entry);
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || String(error), true);
-        await reloadWorkbookFromDb();
-      }
-    }
-
-    async function redoLastChange() {
-      const entry = redoStack.pop();
-      if (!entry) {
-        setStatus('Nichts zum Wiederholen');
-        return;
-      }
-
-      try {
-        await applyCellValueChange(entry.sheetName, entry.col, entry.rowNum, entry.newValue, {
-          recordHistory: false,
-          statusMessage: `${currentDbName} geändert (Wiederholen)`
-        });
-        undoStack.push(entry);
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || String(error), true);
-        await reloadWorkbookFromDb();
-      }
-    }
-
-    async function clearSelectedCellValue() {
-      const meta = getSelectedCellMeta();
-      if (!meta || !meta.cell) return;
-
-      if (!isCellEditable(meta.cell, meta.rowDef, meta.colDef)) {
-        setStatus('Diese Zelle ist nicht editierbar.', true);
-        return;
-      }
-
-      const valueType = String(meta.cell.value_type || 'TEXT').toUpperCase();
-      let clearedValue = '';
-
-      if (valueType === 'BOOLEAN') {
-        clearedValue = false;
-      } else if (valueType === 'JSON' && isJsonDropdownCell(meta.cell)) {
-        const options = getJsonDropdownOptions(meta.cell);
-        if (options.includes('')) {
-          clearedValue = '';
-        } else {
-          throw new Error('Diese Dropdown-Zelle kann nicht geleert werden.');
-        }
-      }
-
-      try {
-        await applyCellValueChange(currentSheet, meta.col, meta.rowNum, clearedValue, {
-          statusMessage: `${currentDbName} geändert`
-        });
-      } catch (error) {
-        console.error(error);
-        setStatus(error.message || String(error), true);
-        await reloadWorkbookFromDb();
-      }
-    }
-
-    function focusCellByRef(cellRef) {
-      if (!cellRef) return;
-      const td = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
-      if (!td) return;
-      selectCell(td);
-      td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    }
-
-    function moveSelectionRelative(rowDelta, colDelta) {
-      if (!currentSheet) return;
-      const sheet = workbook.get(currentSheet);
-      if (!sheet) return;
-
-      const cols = getOrderedColumns(sheet);
-      const rowNums = getVisibleRowNumbers(sheet, currentSheet);
-      if (!cols.length || !rowNums.length) return;
-
-      let startRowIndex = 0;
-      let startColIndex = 0;
-
-      if (currentSelectedCellRef) {
-        const match = /^([A-Z]+)(\d+)$/.exec(currentSelectedCellRef);
-        if (match) {
-          const col = match[1];
-          const rowNum = Number(match[2]);
-          const foundColIndex = cols.indexOf(col);
-          const foundRowIndex = rowNums.indexOf(rowNum);
-          if (foundColIndex >= 0) startColIndex = foundColIndex;
-          if (foundRowIndex >= 0) startRowIndex = foundRowIndex;
-        }
-      }
-
-      const nextRowIndex = Math.max(0, Math.min(rowNums.length - 1, startRowIndex + rowDelta));
-      const nextColIndex = Math.max(0, Math.min(cols.length - 1, startColIndex + colDelta));
-
-      focusCellByRef(`${cols[nextColIndex]}${rowNums[nextRowIndex]}`);
-    }
-
     function setCellValueInDb(sheetName, col, rowNum, rawValue) {
-      if (!db) throw new Error('Es ist keine Datenbank geladen.');
+      if (!db) throw new Error('No database is loaded.');
 
       const cellKey = `${col}|${rowNum}`;
       const sheet = workbook.get(sheetName);
       const currentCell = sheet?.cells.get(cellKey) || null;
 
-      if (!currentCell) throw new Error('Zelle nicht gefunden.');
+      if (!currentCell) throw new Error('Cell not found.');
 
       const valueType = String(currentCell.value_type || 'TEXT').toUpperCase();
 
@@ -1643,7 +885,7 @@
         const selectedValue = String(rawValue ?? '');
 
         if (!options.includes(selectedValue)) {
-          throw new Error('Wert ist nicht in den Dropdown-Optionen enthalten.');
+          throw new Error('Value is not included in the dropdown options.');
         }
 
         const newObj = {
@@ -1685,7 +927,7 @@
         } else {
           const parsed = Number(rawValue);
           if (!Number.isInteger(parsed)) {
-            throw new Error('Bitte eine gültige Ganzzahl eingeben.');
+            throw new Error('Please enter a valid integer.');
           }
           db.run(
             `UPDATE cells
@@ -1708,7 +950,7 @@
         } else {
           const parsed = Number(String(rawValue).replace(',', '.'));
           if (Number.isNaN(parsed)) {
-            throw new Error('Bitte eine gültige Zahl eingeben.');
+            throw new Error('Please enter a valid number.');
           }
           db.run(
             `UPDATE cells
@@ -1729,7 +971,7 @@
     }
 
     function setColumnWidthInDb(sheetName, col, widthPx) {
-      if (!db) throw new Error('Es ist keine Datenbank geladen.');
+      if (!db) throw new Error('No database is loaded.');
       const safeWidth = Math.max(30, Math.round(widthPx)) + 'px';
 
       db.run(
@@ -1743,7 +985,7 @@
     }
 
     function setRowHeightInDb(sheetName, rowNum, heightPx) {
-      if (!db) throw new Error('Es ist keine Datenbank geladen.');
+      if (!db) throw new Error('No database is loaded.');
       const safeHeight = Math.max(20, Math.round(heightPx)) + 'px';
 
       db.run(
@@ -1761,8 +1003,6 @@
 
       const data = queryWorkbook(db);
       workbook = buildWorkbook(data);
-      loadUiStateFromConfig();
-      sanitizeAllUiState();
 
       if (!currentSheet || !workbook.has(currentSheet)) {
         currentSheet = [...workbook.keys()][0] || null;
@@ -1773,7 +1013,7 @@
       if (currentSheet) {
         renderSheet(currentSheet);
       } else if (sheetWrapEl) {
-        sheetWrapEl.innerHTML = '<div class="empty">Die Datenbank enthält keine darstellbaren Blätter.</div>';
+        sheetWrapEl.innerHTML = '<div class="empty">The database contains no displayable sheets.</div>';
       }
 
       if (statusMessage) {
@@ -1812,9 +1052,10 @@
 
       try {
         const oldValue = isBooleanTrue(meta.cell.value);
-        await applyCellValueChange(currentSheet, meta.col, meta.rowNum, !oldValue, {
-          statusMessage: `${currentDbName} geändert`
-        });
+        setCellValueInDb(currentSheet, meta.col, meta.rowNum, !oldValue);
+        await reloadWorkbookFromDb(`${currentDbName} changed`);
+        const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
+        if (updatedTd) selectCell(updatedTd);
       } catch (error) {
         console.error(error);
         setStatus(error.message || String(error), true);
@@ -1830,9 +1071,10 @@
       if (!meta || !meta.cell) return;
 
       try {
-        await applyCellValueChange(currentSheet, meta.col, meta.rowNum, selectedValue, {
-          statusMessage: `${currentDbName} geändert`
-        });
+        setCellValueInDb(currentSheet, meta.col, meta.rowNum, selectedValue);
+        await reloadWorkbookFromDb(`${currentDbName} changed`);
+        const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
+        if (updatedTd) selectCell(updatedTd);
       } catch (error) {
         console.error(error);
         setStatus(error.message || String(error), true);
@@ -1892,9 +1134,10 @@
         }
 
         try {
-          await applyCellValueChange(currentSheet, meta.col, meta.rowNum, newValue, {
-            statusMessage: `${currentDbName} geändert`
-          });
+          setCellValueInDb(currentSheet, meta.col, meta.rowNum, newValue);
+          await reloadWorkbookFromDb(`${currentDbName} changed`);
+          const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${cellRef}"]`);
+          if (updatedTd) selectCell(updatedTd);
         } catch (error) {
           console.error(error);
           setStatus(error.message || String(error), true);
@@ -1926,7 +1169,7 @@
       if (!meta || !meta.cell || !formulaBox) return;
 
       if (!isCellEditable(meta.cell, meta.rowDef, meta.colDef)) {
-        setStatus('Diese Zelle ist nicht editierbar.', true);
+        setStatus('This cell is not editable.', true);
         formulaBox.disabled = true;
         return;
       }
@@ -1938,14 +1181,14 @@
           const raw = String(formulaBox.value || '').trim().toLowerCase();
           const boolValue =
             raw === 'true' || raw === '1' || raw === 'ja' || raw === 'yes' || raw === 'on';
-          await applyCellValueChange(currentSheet, meta.col, meta.rowNum, boolValue, {
-            statusMessage: `${currentDbName} geändert`
-          });
+          setCellValueInDb(currentSheet, meta.col, meta.rowNum, boolValue);
         } else {
-          await applyCellValueChange(currentSheet, meta.col, meta.rowNum, formulaBox.value, {
-            statusMessage: `${currentDbName} geändert`
-          });
+          setCellValueInDb(currentSheet, meta.col, meta.rowNum, formulaBox.value);
         }
+
+        await reloadWorkbookFromDb(`${currentDbName} changed`);
+        const updatedTd = sheetWrapEl.querySelector(`td[data-cell="${currentSelectedCellRef}"]`);
+        if (updatedTd) selectCell(updatedTd);
       } catch (error) {
         console.error(error);
         setStatus(error.message || String(error), true);
@@ -1995,7 +1238,7 @@
 
         try {
           setColumnWidthInDb(currentSheet, col, newWidth);
-          await reloadWorkbookFromDb(`${currentDbName} geändert`);
+          await reloadWorkbookFromDb(`${currentDbName} changed`);
         } catch (error) {
           console.error(error);
           setStatus(error.message || String(error), true);
@@ -2045,7 +1288,7 @@
 
         try {
           setRowHeightInDb(currentSheet, rowNum, newHeight);
-          await reloadWorkbookFromDb(`${currentDbName} geändert`);
+          await reloadWorkbookFromDb(`${currentDbName} changed`);
         } catch (error) {
           console.error(error);
           setStatus(error.message || String(error), true);
@@ -2057,47 +1300,6 @@
       document.addEventListener('mouseup', onMouseUp);
     }
 
-    function showCustomTooltip(text, mouseEvent) {
-      if (!customTooltip) return;
-
-      const content = normalizeNoticeValue(text);
-      if (!content) {
-        hideCustomTooltip();
-        return;
-      }
-
-      customTooltip.textContent = content;
-      customTooltip.style.display = 'block';
-      positionCustomTooltip(mouseEvent);
-    }
-
-    function positionCustomTooltip(mouseEvent) {
-      if (!customTooltip || customTooltip.style.display === 'none') return;
-
-      const offset = 14;
-      const rect = customTooltip.getBoundingClientRect();
-      let left = mouseEvent.clientX + offset;
-      let top = mouseEvent.clientY + offset;
-
-      if (left + rect.width > window.innerWidth - 8) {
-        left = window.innerWidth - rect.width - 8;
-      }
-      if (top + rect.height > window.innerHeight - 8) {
-        top = mouseEvent.clientY - rect.height - offset;
-      }
-      if (left < 8) left = 8;
-      if (top < 8) top = 8;
-
-      customTooltip.style.left = `${left}px`;
-      customTooltip.style.top = `${top}px`;
-    }
-
-    function hideCustomTooltip() {
-      if (!customTooltip) return;
-      customTooltip.style.display = 'none';
-      customTooltip.textContent = '';
-    }
-
     function renderTabs() {
       if (!tabsEl) return;
 
@@ -2107,7 +1309,7 @@
       if (!names.length) {
         const msg = document.createElement('div');
         msg.className = 'muted';
-        msg.textContent = 'Keine Blätter gefunden';
+        msg.textContent = 'No sheets found';
         tabsEl.appendChild(msg);
         return;
       }
@@ -2137,44 +1339,16 @@
 
       const sheet = workbook.get(sheetName);
       if (!sheet) {
-        sheetWrapEl.innerHTML = '<div class="empty">Blatt nicht gefunden</div>';
+        sheetWrapEl.innerHTML = '<div class="empty">Sheet not found</div>';
         return;
       }
 
-      sanitizeSheetUiState(sheetName, sheet);
+      const cols = sortColumns(sheet.cols);
+      const rowNums = [...sheet.rows].sort((a, b) => a - b);
 
-      const cols = getOrderedColumns(sheet);
-      const sortState = getSheetSortState(sheetName);
-      const rowNums = getVisibleRowNumbers(sheet, sheetName);
-      const frozenCols = getFrozenColumns(sheet);
-      const frozenColSet = new Set(frozenCols);
-      const frozenRows = getFrozenRowNumbers(sheet);
-      const frozenRowSet = new Set(frozenRows);
-
-      if (!cols.length) {
-        sheetWrapEl.innerHTML = '<div class="empty">Dieses Blatt enthält keine darstellbaren Spalten.</div>';
+      if (!cols.length || !rowNums.length) {
+        sheetWrapEl.innerHTML = '<div class="empty">Dieses Blatt enthält keine darstellbaren Zeilen oder Spalten.</div>';
         return;
-      }
-
-      if (!rowNums.length) {
-        sheetWrapEl.innerHTML = '<div class="empty">Keine Zeilen entsprechen dem aktiven Filter.</div>';
-        return;
-      }
-
-      const frozenColumnLeftOffsets = new Map();
-      let frozenLeft = 48;
-      for (const col of frozenCols) {
-        frozenColumnLeftOffsets.set(col, frozenLeft);
-        const colDef = sheet.colDefs.get(col) || {};
-        frozenLeft += getCssPixelValue(colDef.width, 120);
-      }
-
-      const frozenRowTopOffsets = new Map();
-      let frozenTop = 24;
-      for (const rowNum of frozenRows) {
-        frozenRowTopOffsets.set(rowNum, frozenTop);
-        const rowDef = sheet.rowDefs.get(rowNum) || {};
-        frozenTop += getCssPixelValue(rowDef.height, 24);
       }
 
       const colgroup = cols.map(col => {
@@ -2187,25 +1361,18 @@
 
       for (const col of cols) {
         const colDef = sheet.colDefs.get(col) || {};
-        const isFrozenCol = frozenColSet.has(col);
         const colHeaderStyle = buildStyleString({
           width: styleValue(withDefault(colDef.width, DEFAULTS.COLUMN.width)),
           minWidth: styleValue(withDefault(colDef.width, DEFAULTS.COLUMN.width)),
           maxWidth: styleValue(withDefault(colDef.width, DEFAULTS.COLUMN.width)),
           backgroundColor: styleValue(withDefault(colDef.background_color, DEFAULTS.COLUMN.background_color)),
           visibility: styleValue(withDefault(colDef.visibility, DEFAULTS.COLUMN.visibility)),
-          userSelect: styleValue(cssUserSelect(withDefault(colDef.user_select, DEFAULTS.COLUMN.user_select))),
-          left: isFrozenCol ? `${frozenColumnLeftOffsets.get(col) || 48}px` : undefined,
-          zIndex: isFrozenCol ? '6' : undefined
+          userSelect: styleValue(cssUserSelect(withDefault(colDef.user_select, DEFAULTS.COLUMN.user_select)))
         });
 
-        const isSortedCol = !isFrozenCol && sortState.col === col && !!sortState.direction;
-        const sortIndicator = getSortIndicator(isSortedCol ? sortState.direction : null);
-
-        html += `<th class="col-header${isFrozenCol ? '' : ' sortable'}${isSortedCol ? ' sorted' : ''}" data-col="${escapeHtml(col)}"${colHeaderStyle ? ` style="${escapeHtml(colHeaderStyle)}"` : ''}>
+        html += `<th class="col-header" data-col="${escapeHtml(col)}"${colHeaderStyle ? ` style="${escapeHtml(colHeaderStyle)}"` : ''}>
           <div class="col-header-inner">
-            <span class="col-header-label">${escapeHtml(col)}</span>
-            <span class="sort-indicator">${escapeHtml(sortIndicator)}</span>
+            <span>${escapeHtml(col)}</span>
             <div class="col-resizer" data-resize-col="${escapeHtml(col)}"></div>
           </div>
         </th>`;
@@ -2215,16 +1382,13 @@
 
       for (const rowNum of rowNums) {
         const rowDef = sheet.rowDefs.get(rowNum) || {};
-        const isFrozenRowValue = frozenRowSet.has(rowNum);
         const rowHeaderStyle = buildStyleString({
           height: styleValue(withDefault(rowDef.height, DEFAULTS.ROW.height)),
           minHeight: styleValue(withDefault(rowDef.height, DEFAULTS.ROW.height)),
           maxHeight: styleValue(withDefault(rowDef.height, DEFAULTS.ROW.height)),
           backgroundColor: styleValue(withDefault(rowDef.background_color, DEFAULTS.ROW.background_color)),
           visibility: styleValue(withDefault(rowDef.visibility, DEFAULTS.ROW.visibility)),
-          userSelect: styleValue(cssUserSelect(withDefault(rowDef.user_select, DEFAULTS.ROW.user_select))),
-          top: isFrozenRowValue ? `${frozenRowTopOffsets.get(rowNum) || 24}px` : undefined,
-          zIndex: isFrozenRowValue ? '5' : undefined
+          userSelect: styleValue(cssUserSelect(withDefault(rowDef.user_select, DEFAULTS.ROW.user_select)))
         });
 
         html += `<tr data-row="${rowNum}"><th class="row-header" data-row-header="${rowNum}"${rowHeaderStyle ? ` style="${escapeHtml(rowHeaderStyle)}"` : ''}>
@@ -2238,22 +1402,9 @@
           const cell = sheet.cells.get(`${col}|${rowNum}`) || null;
           const colDef = sheet.colDefs.get(col) || {};
           const value = cellDisplayValue(cell);
-          const titleValue = normalizeNoticeValue(withDefault(cell?.notice, DEFAULTS.CELL.notice));
-          const noticeAttr = titleValue ? ` data-notice="${escapeHtml(titleValue)}"` : '';
-          const baseStyle = buildCellStyle(cell, rowDef, colDef);
-          const isFrozenCol = frozenColSet.has(col);
-          const styleParts = [baseStyle];
-          if (isFrozenRowValue) {
-            styleParts.push('position:sticky');
-            styleParts.push(`top:${frozenRowTopOffsets.get(rowNum) || 24}px`);
-            styleParts.push(`z-index:${isFrozenCol ? 4 : 3}`);
-          }
-          if (isFrozenCol) {
-            styleParts.push('position:sticky');
-            styleParts.push(`left:${frozenColumnLeftOffsets.get(col) || 48}px`);
-            styleParts.push(`z-index:${isFrozenRowValue ? 4 : 2}`);
-          }
-          const style = styleParts.filter(Boolean).join(';');
+          const titleValue = withDefault(cell?.notice, DEFAULTS.CELL.notice);
+          const title = titleValue ? ` title="${escapeHtml(titleValue)}"` : '';
+          const style = buildCellStyle(cell, rowDef, colDef);
           const cellRef = `${col}${rowNum}`;
           const editable = isCellEditable(cell, rowDef, colDef);
 
@@ -2281,7 +1432,7 @@
 
           const classAttr = tdClass ? ` class="${tdClass}"` : '';
 
-          html += `<td${classAttr} data-cell="${escapeHtml(cellRef)}" data-value="${escapeHtml(String(value))}" data-editable="${editable ? 'true' : 'false'}"${noticeAttr}${style ? ` style="${escapeHtml(style)}"` : ''}>${renderedValue}</td>`;
+          html += `<td${classAttr} data-cell="${escapeHtml(cellRef)}" data-value="${escapeHtml(String(value))}" data-editable="${editable ? 'true' : 'false'}"${title}${style ? ` style="${escapeHtml(style)}"` : ''}>${renderedValue}</td>`;
         }
 
         html += '</tr>';
@@ -2293,15 +1444,6 @@
       for (const td of sheetWrapEl.querySelectorAll('td[data-cell]')) {
         td.addEventListener('click', () => selectCell(td));
         td.addEventListener('dblclick', () => activateCellEditor(td));
-        td.addEventListener('mouseenter', (event) => {
-          const notice = td.dataset.notice || '';
-          if (notice) showCustomTooltip(notice, event);
-        });
-        td.addEventListener('mousemove', (event) => {
-          const notice = td.dataset.notice || '';
-          if (notice) positionCustomTooltip(event);
-        });
-        td.addEventListener('mouseleave', () => hideCustomTooltip());
       }
 
       for (const select of sheetWrapEl.querySelectorAll('select.cell-dropdown[data-dropdown-cell]')) {
@@ -2315,28 +1457,6 @@
           const td = select.closest('td[data-cell]');
           if (!td) return;
           await updateJsonDropdownCell(td, select.value);
-        });
-      }
-
-      for (const header of sheetWrapEl.querySelectorAll('th.col-header[data-col]')) {
-        header.addEventListener('click', (event) => {
-          if (event.target.closest('.col-resizer')) return;
-          const col = header.dataset.col;
-          if (!col) return;
-          if (isFrozenColumn(sheet.colDefs.get(col) || {})) return;
-          const nextDirection = getNextSortDirection(sheetName, col);
-          setSheetSortState(sheetName, col, nextDirection);
-          renderSheet(sheetName);
-        });
-
-        header.addEventListener('contextmenu', (event) => {
-          if (event.target.closest('.col-resizer')) return;
-          event.preventDefault();
-          event.stopPropagation();
-          const col = header.dataset.col;
-          if (!col) return;
-          if (isFrozenColumn(sheet.colDefs.get(col) || {})) return;
-          openFilterMenu(sheetName, col, event.clientX, event.clientY);
         });
       }
 
@@ -2359,22 +1479,6 @@
       }
     }
 
-    document.addEventListener('scroll', () => hideCustomTooltip(), true);
-    document.addEventListener('mousedown', () => hideCustomTooltip());
-
-    document.addEventListener('click', (event) => {
-      if (!filterMenu || filterMenu.style.display !== 'block') return;
-      if (filterMenu.contains(event.target)) return;
-      hideFilterMenu();
-    });
-
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
-        hideFilterMenu();
-        hideCustomTooltip();
-      }
-    });
-
     async function ensureSqlJs() {
       if (!SQL) {
         SQL = await initSqlJs({
@@ -2392,21 +1496,18 @@
 
         const data = queryWorkbook(db);
         workbook = buildWorkbook(data);
-        loadUiStateFromConfig();
         currentSheet = [...workbook.keys()][0] || null;
 
         currentDbPath = options.path || null;
         currentDbName = options.name || label || 'database.sqlite';
         currentSelectedCellRef = null;
-        undoStack.length = 0;
-        redoStack.length = 0;
 
         renderTabs();
 
         if (currentSheet) {
           renderSheet(currentSheet);
         } else if (sheetWrapEl) {
-          sheetWrapEl.innerHTML = '<div class="empty">Die Datenbank enthält keine darstellbaren Blätter.</div>';
+          sheetWrapEl.innerHTML = '<div class="empty">The database contains no displayable sheets.</div>';
         }
 
         if (nameBox) nameBox.textContent = '-';
@@ -2415,18 +1516,16 @@
           formulaBox.disabled = true;
         }
 
-        setStatus(`${label} geladen · ${data.cells.length} Zellen · ${workbook.size} Blatt/Blätter`);
+        setStatus(`${label} loaded · ${data.cells.length} cells · ${workbook.size} sheet(s)`);
       } catch (error) {
         console.error(error);
         workbook = new Map();
         currentSheet = null;
         currentDbPath = null;
         currentSelectedCellRef = null;
-        undoStack.length = 0;
-        redoStack.length = 0;
         renderTabs();
         if (sheetWrapEl) {
-          sheetWrapEl.innerHTML = `<div class="empty">Fehler beim Laden: ${escapeHtml(error.message || String(error))}</div>`;
+          sheetWrapEl.innerHTML = `<div class="empty">Error while loading: ${escapeHtml(error.message || String(error))}</div>`;
         }
         if (formulaBox) {
           formulaBox.value = '-';
@@ -2436,9 +1535,98 @@
       }
     }
 
+    function getCurrentSheetTable() {
+      return sheetWrapEl ? sheetWrapEl.querySelector('table.sheet') : null;
+    }
+
+    function sanitizeFilenamePart(value) {
+      return String(value || 'sheet').replace(/[\/:*?"<>|]+/g, '_').trim() || 'sheet';
+    }
+
+    function triggerDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function buildExportBaseName(extension) {
+      const dbBase = String(currentDbName || 'database.sqlite').replace(/\.[^.]+$/, '');
+      const sheetBase = sanitizeFilenamePart(currentSheet || 'sheet');
+      return `${dbBase}_${sheetBase}.${extension}`;
+    }
+
+    async function exportCurrentSheetAsHtml() {
+      try {
+        if (!db) throw new Error('No database is loaded.');
+        if (!currentSheet) throw new Error('No sheet selected.');
+        const table = getCurrentSheetTable();
+        if (!table) throw new Error('Nothing to export.');
+
+        const styleTag = document.querySelector('style');
+        const exportTitle = `${currentSheet} - ${currentDbName || 'database.sqlite'}`;
+        const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escapeHtml(exportTitle)}</title>
+  <style>${styleTag ? styleTag.textContent : ''}
+    body { padding: 16px; height: auto; background: #ffffff; }
+    .sheet-wrap { overflow: visible; }
+    .topbar, .formula-bar, .tabs, .filter-menu, .custom-tooltip { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="sheet-wrap">${table.outerHTML}</div>
+</body>
+</html>`;
+
+        triggerDownload(new Blob([html], { type: 'text/html;charset=utf-8' }), buildExportBaseName('html'));
+        setStatus(`${buildExportBaseName('html')} saved`);
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || String(error), true);
+      }
+    }
+
+    function csvEscape(value) {
+      const text = String(value ?? '');
+      if (/[",\n;]/.test(text)) {
+        return '"' + text.replace(/"/g, '""') + '"';
+      }
+      return text;
+    }
+
+    async function exportCurrentSheetAsCsv() {
+      try {
+        if (!db) throw new Error('No database is loaded.');
+        if (!currentSheet) throw new Error('No sheet selected.');
+        const table = getCurrentSheetTable();
+        if (!table) throw new Error('Nothing to export.');
+
+        const rows = [];
+        for (const tr of table.querySelectorAll('tr')) {
+          const cells = [...tr.children].map(cell => cell.innerText.replace(/\s+/g, ' ').trim());
+          rows.push(cells.map(csvEscape).join(';'));
+        }
+
+        const csv = rows.join('\n');
+        triggerDownload(new Blob([csv], { type: 'text/csv;charset=utf-8' }), buildExportBaseName('csv'));
+        setStatus(`${buildExportBaseName('csv')} saved`);
+      } catch (error) {
+        console.error(error);
+        setStatus(error.message || String(error), true);
+      }
+    }
+
     async function saveDatabaseToFile() {
       try {
-        if (!db) throw new Error('Es ist keine Datenbank geladen.');
+        if (!db) throw new Error('No database is loaded.');
 
         const bytes = Array.from(db.export());
 
@@ -2450,13 +1638,13 @@
           });
 
           if (!result || result.canceled) {
-            setStatus('Speichern abgebrochen');
+            setStatus('Save canceled');
             return;
           }
 
           currentDbPath = result.path || currentDbPath;
           currentDbName = result.name || currentDbName;
-          setStatus(`${currentDbName} gespeichert`);
+          setStatus(`${currentDbName} saved`);
           return;
         }
 
@@ -2469,7 +1657,7 @@
         link.click();
         link.remove();
         URL.revokeObjectURL(url);
-        setStatus(`${currentDbName || 'database.sqlite'} gespeichert`);
+        setStatus(`${currentDbName || 'database.sqlite'} saved`);
       } catch (error) {
         console.error(error);
         setStatus(error.message || String(error), true);
@@ -2480,11 +1668,12 @@
       dbFileInput.addEventListener('change', async event => {
         const file = event.target.files?.[0];
         if (!file) return;
-        setStatus(`Lade ${file.name} ...`);
+        setStatus(`Loading ${file.name} ...`);
         const buffer = await file.arrayBuffer();
         await loadDatabaseFromArrayBuffer(buffer, file.name, {
           name: file.name
         });
+        dbFileInput.value = '';
       });
     }
 
@@ -2514,6 +1703,18 @@
       });
     }
 
+    if (htmlExportBtn) {
+      htmlExportBtn.addEventListener('click', async () => {
+        await exportCurrentSheetAsHtml();
+      });
+    }
+
+    if (csvExportBtn) {
+      csvExportBtn.addEventListener('click', async () => {
+        await exportCurrentSheetAsCsv();
+      });
+    }
+
     if (formulaBox) {
       formulaBox.addEventListener('keydown', async (event) => {
         if (event.key === 'Enter') {
@@ -2528,75 +1729,6 @@
         }
       });
     }
-
-
-    window.addEventListener('keydown', async (event) => {
-      const activeElement = document.activeElement;
-      const activeTag = activeElement?.tagName?.toLowerCase();
-      const isTyping = activeTag === 'input' || activeTag === 'textarea' || activeElement?.isContentEditable;
-      const cellEditorActive = !!sheetWrapEl.querySelector('td[data-editing="true"] .cell-editor');
-      const mod = event.ctrlKey || event.metaKey;
-      const key = String(event.key || '').toLowerCase();
-
-      if (mod && key === 's') {
-        event.preventDefault();
-        event.stopPropagation();
-        await saveDatabaseToFile();
-        return;
-      }
-
-      if (mod && key === 'z' && !event.shiftKey) {
-        event.preventDefault();
-        await undoLastChange();
-        return;
-      }
-
-      if ((mod && key === 'y') || (mod && event.shiftKey && key === 'z')) {
-        event.preventDefault();
-        await redoLastChange();
-        return;
-      }
-
-      if (cellEditorActive) return;
-
-      if ((key === 'delete' || key === 'backspace') && !isTyping) {
-        event.preventDefault();
-        await clearSelectedCellValue();
-        return;
-      }
-
-      if (isTyping) return;
-
-      if (key === 'arrowleft') {
-        event.preventDefault();
-        moveSelectionRelative(0, -1);
-        return;
-      }
-      if (key === 'arrowright') {
-        event.preventDefault();
-        moveSelectionRelative(0, 1);
-        return;
-      }
-      if (key === 'arrowup') {
-        event.preventDefault();
-        moveSelectionRelative(-1, 0);
-        return;
-      }
-      if (key === 'arrowdown') {
-        event.preventDefault();
-        moveSelectionRelative(1, 0);
-        return;
-      }
-      if (key === 'tab') {
-        event.preventDefault();
-        moveSelectionRelative(0, event.shiftKey ? -1 : 1);
-        return;
-      }
-      if (key === 'enter') {
-        event.preventDefault();
-        moveSelectionRelative(event.shiftKey ? -1 : 1, 0);
-      }
-    });
   </script>
 </body>
 </html>
