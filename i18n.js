@@ -2,6 +2,7 @@ export const I18N = {
   APP_TITLE: 'SQLSpread',
   OPEN_DB_LABEL: 'Select SQLite file',
   SAVE_DB_BUTTON: 'Save database',
+  EXPORT_HTML_BUTTON: 'Export sheet as HTML',
   STATUS_NO_FILE: 'No file loaded',
   INITIAL_EMPTY_HTML: 'Load a SQLite file. Expected tables: <code>tabs</code>, <code>lines</code>, <code>parts</code>, and <code>cells</code>.<div class="muted">Tabs = <code>name</code>, columns = <code>part</code>, rows = <code>line</code>.</div>',
   REQUIRED_TABLES_MISSING: missing => `The SQLite file is missing required tables: ${missing.join(', ')}`,
@@ -14,6 +15,8 @@ export const I18N = {
   SAVE_CANCELED: 'Save canceled',
   SAVE_SUCCESS: name => `${name} saved`,
   LOADING_FILE: name => `Loading ${name} ...`,
+  EXPORT_NO_SHEET: 'No open sheet available for HTML export.',
+  EXPORT_SUCCESS: name => `${name} exported`,
   CELL_NOT_FOUND: 'Cell not found.',
   BLOB_NOT_SUPPORTED: 'BLOB cells are not supported yet.',
   DROPDOWN_VALUE_INVALID: 'Value is not in the dropdown options.',
@@ -46,6 +49,8 @@ export function applyStaticTranslations(documentRef = document) {
   if (openDbLabel) openDbLabel.textContent = I18N.OPEN_DB_LABEL;
   const saveBtn = documentRef.getElementById('saveBtn');
   if (saveBtn) saveBtn.textContent = I18N.SAVE_DB_BUTTON;
+  const exportBtn = documentRef.getElementById('exportHtmlBtn');
+  if (exportBtn) exportBtn.textContent = I18N.EXPORT_HTML_BUTTON;
   const statusEl = documentRef.getElementById('status');
   if (statusEl) statusEl.textContent = I18N.STATUS_NO_FILE;
   const sheetWrapEl = documentRef.getElementById('sheetWrap');
