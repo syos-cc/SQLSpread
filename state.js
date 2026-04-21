@@ -44,6 +44,7 @@ export const dom = {
   nameBox: document.getElementById('nameBox'),
   formulaBox: document.getElementById('formulaBox'),
   saveBtn: document.getElementById('saveBtn'),
+  exportHtmlBtn: document.getElementById('exportHtmlBtn'),
   customTooltip: document.getElementById('customTooltip'),
   filterMenu: document.getElementById('filterMenu')
 };

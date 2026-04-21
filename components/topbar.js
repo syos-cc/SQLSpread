@@ -1,8 +1,8 @@
 import { dom } from '../state.js';
 import { loadDatabaseFromArrayBuffer, saveDatabaseToFile, setStatus } from '../db.js';
-import { exportCurrentSheetAsHtml } from '../logic/export.js';
 import { isElectron } from '../utils.js';
 import { I18N } from '../i18n.js';
+import { exportCurrentSheetAsHTML } from '../logic/export.js';
 
 export function initTopbar() {
   if (dom.dbFileInput) {
@@ -28,16 +28,6 @@ export function initTopbar() {
       }
     });
   }
-  if (dom.saveBtn) {
-    dom.saveBtn.addEventListener('click', async () => {
-      await saveDatabaseToFile();
-    });
-  }
-
-  const exportBtn = document.getElementById('exportHtmlBtn');
-  if (exportBtn) {
-    exportBtn.addEventListener('click', async () => {
-      await exportCurrentSheetAsHtml();
-    });
-  }
+  if (dom.saveBtn) dom.saveBtn.addEventListener('click', async () => { await saveDatabaseToFile(); });
+  if (dom.exportHtmlBtn) dom.exportHtmlBtn.addEventListener('click', () => { exportCurrentSheetAsHTML(); });
 }

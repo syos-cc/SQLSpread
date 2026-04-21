@@ -15,8 +15,6 @@ export const I18N = {
   SAVE_CANCELED: 'Save canceled',
   SAVE_SUCCESS: name => `${name} saved`,
   LOADING_FILE: name => `Loading ${name} ...`,
-  EXPORT_NO_SHEET: 'No open sheet available for HTML export.',
-  EXPORT_SUCCESS: name => `${name} exported`,
   CELL_NOT_FOUND: 'Cell not found.',
   BLOB_NOT_SUPPORTED: 'BLOB cells are not supported yet.',
   DROPDOWN_VALUE_INVALID: 'Value is not in the dropdown options.',
@@ -39,7 +37,8 @@ export const I18N = {
   FILTER_RESET: 'Reset',
   FILTER_APPLY: 'Apply',
   FILTER_CLOSE: 'Close',
-  FILTER_EMPTY: '(Empty)'
+  FILTER_EMPTY: '(Empty)',
+  EXPORT_HTML_SUCCESS: name => `Exported ${name}.html`
 };
 
 export function applyStaticTranslations(documentRef = document) {
@@ -49,8 +48,8 @@ export function applyStaticTranslations(documentRef = document) {
   if (openDbLabel) openDbLabel.textContent = I18N.OPEN_DB_LABEL;
   const saveBtn = documentRef.getElementById('saveBtn');
   if (saveBtn) saveBtn.textContent = I18N.SAVE_DB_BUTTON;
-  const exportBtn = documentRef.getElementById('exportHtmlBtn');
-  if (exportBtn) exportBtn.textContent = I18N.EXPORT_HTML_BUTTON;
+  const exportHtmlBtn = documentRef.getElementById('exportHtmlBtn');
+  if (exportHtmlBtn) exportHtmlBtn.textContent = I18N.EXPORT_HTML_BUTTON;
   const statusEl = documentRef.getElementById('status');
   if (statusEl) statusEl.textContent = I18N.STATUS_NO_FILE;
   const sheetWrapEl = documentRef.getElementById('sheetWrap');
