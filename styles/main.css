@@ -1,0 +1,547 @@
+:root {
+      --excel-green: #217346;
+      --grid: #d9d9d9;
+      --header-bg: #f3f3f3;
+      --sheet-bg: #ffffff;
+      --text: #000000;
+      --tab-border: #c8c8c8;
+      --panel-bg: #fafafa;
+      --error-bg: #c62828;
+      --checkbox-border: #8a8a8a;
+      --checkbox-bg: #ffffff;
+      --checkbox-checked-bg: #217346;
+      --checkbox-check: #ffffff;
+      --editable-hover: #e8f0fe;
+      --editable-active: #d2e3fc;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Calibri, "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background: #f5f5f5;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #d0d0d0;
+      background: var(--panel-bg);
+      flex-wrap: wrap;
+    }
+
+    .btn,
+    .file-label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      padding: 0 14px;
+      border: 1px solid #bfbfbf;
+      background: #ffffff;
+      color: #222;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      text-decoration: none;
+      user-select: none;
+    }
+
+    .btn:hover,
+    .file-label:hover {
+      background: #f1f1f1;
+    }
+
+    #dbFile {
+      display: none;
+    }
+
+    .status {
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 10px;
+      border: 1px solid #d0d0d0;
+      background: #fff;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #333;
+      max-width: 100%;
+    }
+
+    .error {
+      background: var(--error-bg);
+      color: white;
+      border-color: var(--error-bg);
+    }
+
+    .formula-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid #d0d0d0;
+      background: #ffffff;
+    }
+
+    .name-box {
+      width: 90px;
+      min-height: 28px;
+      border: 1px solid #cfcfcf;
+      background: #fff;
+      padding: 4px 8px;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .formula-input {
+      flex: 1;
+      min-height: 28px;
+      height: 28px;
+      border: 1px solid #cfcfcf;
+      background: #fff;
+      padding: 4px 8px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    .formula-input:disabled {
+      background: #f3f3f3;
+      color: #777;
+    }
+
+    .main {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sheet-wrap {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      background: var(--sheet-bg);
+    }
+
+    table.sheet {
+      border-collapse: collapse;
+      table-layout: fixed;
+      background: #fff;
+      width: max-content;
+      min-width: 0;
+    }
+
+    table.sheet th,
+    table.sheet td {
+      border: 1px solid var(--grid);
+      height: 24px;
+      min-height: 24px;
+      max-height: 24px;
+      padding: 2px 6px;
+      font: 14px Calibri, "Segoe UI", Arial, sans-serif;
+      color: #000;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: middle;
+      background: #fff;
+    }
+
+    table.sheet thead th,
+    .row-header,
+    .corner-cell {
+      background: var(--header-bg) !important;
+      font-weight: 400;
+      text-align: center;
+    }
+
+    .corner-cell {
+      min-width: 48px;
+      width: 48px;
+      position: sticky;
+      top: 0;
+      left: 0;
+      z-index: 4;
+    }
+
+    .col-header {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      padding: 0 !important;
+      overflow: visible !important;
+    }
+
+    .col-header-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 2px 16px 2px 6px;
+    }
+
+    .col-header-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .col-header.sortable {
+      cursor: pointer;
+    }
+
+    .col-header.sortable:hover {
+      background: #e8ecef !important;
+    }
+
+    .sort-indicator {
+      min-width: 10px;
+      font-size: 11px;
+      line-height: 1;
+      color: #666;
+      user-select: none;
+    }
+
+    .col-header.sorted .sort-indicator {
+      color: var(--excel-green);
+      font-weight: 700;
+    }
+
+    .col-resizer {
+      position: absolute;
+      top: 0;
+      right: -3px;
+      width: 6px;
+      height: 100%;
+      cursor: col-resize;
+      user-select: none;
+      z-index: 10;
+    }
+
+    .col-resizer:hover {
+      background: rgba(33, 115, 70, 0.15);
+    }
+
+    .row-header {
+      position: sticky;
+      left: 0;
+      z-index: 2;
+      width: 48px;
+      min-width: 48px;
+      padding: 0 !important;
+      overflow: visible !important;
+    }
+
+    .row-header-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 6px 10px 6px;
+    }
+
+    .row-resizer {
+      position: absolute;
+      left: 0;
+      bottom: -3px;
+      width: 100%;
+      height: 6px;
+      cursor: row-resize;
+      user-select: none;
+      z-index: 10;
+    }
+
+    .row-resizer:hover {
+      background: rgba(33, 115, 70, 0.15);
+    }
+
+    .tabs {
+      display: flex;
+      align-items: end;
+      gap: 2px;
+      padding: 8px 8px 0 8px;
+      border-top: 1px solid #d0d0d0;
+      background: #f3f3f3;
+      overflow-x: auto;
+      min-height: 44px;
+    }
+
+    .tab {
+      border: 1px solid var(--tab-border);
+      border-bottom: none;
+      background: #eaeaea;
+      padding: 8px 16px;
+      cursor: pointer;
+      border-radius: 6px 6px 0 0;
+      white-space: nowrap;
+      font-size: 14px;
+      user-select: none;
+    }
+
+    .tab.active {
+      background: #fff;
+      position: relative;
+      color: var(--excel-green);
+      font-weight: 600;
+    }
+
+    .tab.active::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 3px;
+      background: var(--excel-green);
+      border-radius: 6px 6px 0 0;
+    }
+
+    .empty {
+      padding: 24px;
+      color: #555;
+      font-size: 14px;
+    }
+
+    .muted {
+      color: #666;
+      font-size: 13px;
+    }
+
+    .bool-cell {
+      text-align: center !important;
+      padding: 0 !important;
+    }
+
+    .bool-checkbox {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 1px solid var(--checkbox-border);
+      border-radius: 3px;
+      background: var(--checkbox-bg);
+      position: relative;
+      vertical-align: middle;
+      margin: 0;
+    }
+
+    .bool-checkbox.checked {
+      background: var(--checkbox-checked-bg);
+      border-color: var(--checkbox-checked-bg);
+    }
+
+    .bool-checkbox.checked::after {
+      content: "";
+      position: absolute;
+      left: 4px;
+      top: 1px;
+      width: 4px;
+      height: 8px;
+      border: solid var(--checkbox-check);
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+
+    .json-dropdown-cell {
+      padding: 0 !important;
+    }
+
+    .dropdown-cell {
+      background-color: inherit !important;
+    }
+
+    .cell-dropdown {
+      width: 100%;
+      height: 100%;
+      min-height: 22px;
+      border: none;
+      outline: none;
+      margin: 0;
+      padding: 0 20px 0 6px;
+      background-color: transparent;
+      font: inherit;
+      color: inherit;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-image:
+        linear-gradient(45deg, transparent 50%, #666 50%),
+        linear-gradient(135deg, #666 50%, transparent 50%);
+      background-position:
+        calc(100% - 12px) calc(50% - 2px),
+        calc(100% - 8px) calc(50% - 2px);
+      background-size: 4px 4px, 4px 4px;
+      background-repeat: no-repeat;
+    }
+
+    .cell-dropdown:disabled {
+      background-color: transparent;
+      color: inherit;
+      opacity: 1;
+      cursor: default;
+    }
+
+    td[data-editable="true"] {
+      cursor: text;
+    }
+
+    td[data-editable="true"]:hover {
+      background: var(--editable-hover) !important;
+    }
+
+    td[data-editable="false"] {
+      cursor: default;
+    }
+
+    td.cell-selected {
+      outline: 2px solid var(--excel-green);
+      outline-offset: -2px;
+    }
+
+    td.cell-editing {
+      background: var(--editable-active) !important;
+      padding: 0 !important;
+    }
+
+    .cell-editor {
+      width: 100%;
+      height: 100%;
+      min-height: 22px;
+      border: none;
+      outline: none;
+      margin: 0;
+      padding: 2px 6px;
+      background: transparent;
+      font: inherit;
+      color: inherit;
+    }
+
+    body.col-resizing,
+    body.col-resizing * {
+      cursor: col-resize !important;
+      user-select: none !important;
+    }
+
+    body.row-resizing,
+    body.row-resizing * {
+      cursor: row-resize !important;
+      user-select: none !important;
+    }
+
+    .custom-tooltip {
+      position: fixed;
+      display: none;
+      max-width: 360px;
+      padding: 6px 8px;
+      background: #fff8c4;
+      color: #222;
+      border: 1px solid #c9b458;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+      font: 13px Calibri, "Segoe UI", Arial, sans-serif;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      word-break: break-word;
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+
+    .filter-menu {
+      position: fixed;
+      display: none;
+      min-width: 240px;
+      max-width: 320px;
+      background: #ffffff;
+      border: 1px solid #c8c8c8;
+      border-radius: 6px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+      z-index: 10000;
+      padding: 8px;
+      font: 13px Calibri, "Segoe UI", Arial, sans-serif;
+      color: #222;
+    }
+
+    .filter-menu-header {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .filter-menu-actions {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .filter-menu-btn {
+      min-height: 28px;
+      padding: 0 10px;
+      border: 1px solid #bfbfbf;
+      background: #ffffff;
+      border-radius: 4px;
+      cursor: pointer;
+      font: inherit;
+      color: inherit;
+    }
+
+    .filter-menu-btn:hover {
+      background: #f1f1f1;
+    }
+
+    .filter-menu-list {
+      max-height: 240px;
+      overflow: auto;
+      border: 1px solid #dddddd;
+      background: #fff;
+      padding: 4px;
+      margin-bottom: 8px;
+    }
+
+    .filter-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 2px;
+      cursor: pointer;
+    }
+
+    .filter-menu-item:hover {
+      background: #f7f7f7;
+    }
+
+    .filter-menu-item input {
+      margin: 0;
+    }
+
+    .filter-menu-label {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .filter-menu-footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .col-header.filter-active .col-header-inner {
+      background: linear-gradient(to bottom, #fefefe, #eef7ee);
+    }
