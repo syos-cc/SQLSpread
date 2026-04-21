@@ -1,13 +1,14 @@
 import { state, dom } from '../state.js';
 import { buildTabStyle } from '../utils.js';
 import { renderSheet } from './render-sheet.js';
+import { I18N } from '../i18n.js';
 
 export function renderTabs() {
   if (!dom.tabsEl) return;
   dom.tabsEl.innerHTML = '';
   const names = [...state.workbook.keys()];
   if (!names.length) {
-    const msg = document.createElement('div'); msg.className = 'muted'; msg.textContent = 'Keine Blätter gefunden'; dom.tabsEl.appendChild(msg); return;
+    const msg = document.createElement('div'); msg.className = 'muted'; msg.textContent = I18N.NO_SHEETS_FOUND; dom.tabsEl.appendChild(msg); return;
   }
   for (const name of names) {
     const sheet = state.workbook.get(name);

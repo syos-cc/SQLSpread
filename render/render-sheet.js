@@ -5,6 +5,7 @@ import { compareCellValues, getNextSortDirection, getSheetSortState, getSortIndi
 import { activateCellEditor, selectCell, updateJsonDropdownCell } from '../logic/editing.js';
 import { startColumnResize, startRowResize } from '../logic/resizing.js';
 import { hideCustomTooltip, positionCustomTooltip, showCustomTooltip } from '../components/tooltip.js';
+import { I18N } from '../i18n.js';
 
 export function getVisibleRowNumbersForCurrentSheet(sheet, sheetName) {
   const baseRowNums = [...sheet.rows].sort((a, b) => a - b);
@@ -31,7 +32,7 @@ export function getVisibleRowNumbersForCurrentSheet(sheet, sheetName) {
 export function renderSheet(sheetName) {
   if (!dom.sheetWrapEl) return;
   const sheet = state.workbook.get(sheetName);
-  if (!sheet) { dom.sheetWrapEl.innerHTML = '<div class="empty">Blatt nicht gefunden</div>'; return; }
+  if (!sheet) { dom.sheetWrapEl.innerHTML = `<div class="empty">${I18N.SHEET_NOT_FOUND}</div>`; return; }
   sanitizeSheetUiState(sheetName, sheet);
   const cols = getOrderedColumns(sheet);
   const sortState = getSheetSortState(sheetName);
@@ -40,8 +41,8 @@ export function renderSheet(sheetName) {
   const frozenColSet = new Set(frozenCols);
   const frozenRows = getFrozenRowNumbers(sheet);
   const frozenRowSet = new Set(frozenRows);
-  if (!cols.length) { dom.sheetWrapEl.innerHTML = '<div class="empty">Dieses Blatt enthält keine darstellbaren Spalten.</div>'; return; }
-  if (!rowNums.length) { dom.sheetWrapEl.innerHTML = '<div class="empty">Keine Zeilen entsprechen dem aktiven Filter.</div>'; return; }
+  if (!cols.length) { dom.sheetWrapEl.innerHTML = `<div class="empty">${I18N.SHEET_NO_DISPLAYABLE_COLUMNS}</div>`; return; }
+  if (!rowNums.length) { dom.sheetWrapEl.innerHTML = `<div class="empty">${I18N.NO_ROWS_MATCH_FILTER}</div>`; return; }
   const frozenColumnLeftOffsets = new Map(); let frozenLeft = 48;
   for (const col of frozenCols) { frozenColumnLeftOffsets.set(col, frozenLeft); frozenLeft += getCssPixelValue((sheet.colDefs.get(col) || {}).width, 120); }
   const frozenRowTopOffsets = new Map(); let frozenTop = 24;

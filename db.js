@@ -2,6 +2,7 @@ import { CONFIG_UI_STATE_KEY, state, dom, resetWorkbookState } from './state.js'
 import { escapeHtml, isElectron, normalizeColName } from './utils.js';
 import { renderTabs } from './render/render-tabs.js';
 import { renderSheet } from './render/render-sheet.js';
+import { I18N } from './i18n.js';
 
 export function setStatus(message, isError = false) {
   if (!dom.statusEl) return;
@@ -17,7 +18,7 @@ export function hasTable(database, tableName) {
 export function requireSchema(database) {
   const required = ['cells', 'tabs', 'lines', 'parts'];
   const missing = required.filter(name => !hasTable(database, name));
-  if (missing.length) throw new Error(`Die SQLite-Datei enthält nicht alle benötigten Tabellen: ${missing.join(', ')}`);
+  if (missing.length) throw new Error(I18N.REQUIRED_TABLES_MISSING(missing));
 }
 
 export function queryTable(database, sql) {
@@ -46,11 +47,11 @@ export function ensureSheet(book, name) {
 export function buildWorkbook(data) {
   const book = new Map();
   for (const tab of data.tabs) {
-    const sheetName = tab.z || 'Tabelle';
+    const sheetName = tab.z || I18N.DEFAULT_SHEET_NAME;
     ensureSheet(book, sheetName).tabDef = tab;
   }
   for (const row of data.rows) {
-    const sheetName = row.z || 'Tabelle';
+    const sheetName = row.z || I18N.DEFAULT_SHEET_NAME;
     const rowNum = Number(row.y);
     if (!Number.isFinite(rowNum)) continue;
     const sheet = ensureSheet(book, sheetName);
@@ -58,7 +59,7 @@ export function buildWorkbook(data) {
     sheet.rows.add(rowNum);
   }
   for (const col of data.columns) {
-    const sheetName = col.z || 'Tabelle';
+    const sheetName = col.z || I18N.DEFAULT_SHEET_NAME;
     const colName = normalizeColName(col.x);
     if (!colName) continue;
     const sheet = ensureSheet(book, sheetName);
@@ -66,7 +67,7 @@ export function buildWorkbook(data) {
     sheet.cols.add(colName);
   }
   for (const cell of data.cells) {
-    const sheetName = cell.z || 'Tabelle';
+    const sheetName = cell.z || I18N.DEFAULT_SHEET_NAME;
     const colName = normalizeColName(cell.x);
     const rowNum = Number(cell.y);
     if (!colName || !Number.isFinite(rowNum)) continue;
@@ -123,7 +124,7 @@ export function loadUiStateFromConfig() {
       }
     }
   } catch (error) {
-    console.error('UI state in config could not be parsed:', error);
+    console.error(I18N.CONFIG_PARSE_ERROR, error);
   }
 }
 
@@ -141,7 +142,7 @@ export async function reloadWorkbookFromDb(statusMessage = null) {
   if (!state.currentSheet || !state.workbook.has(state.currentSheet)) state.currentSheet = [...state.workbook.keys()][0] || null;
   renderTabs();
   if (state.currentSheet) renderSheet(state.currentSheet);
-  else if (dom.sheetWrapEl) dom.sheetWrapEl.innerHTML = '<div class="empty">Die Datenbank enthält keine darstellbaren Blätter.</div>';
+  else if (dom.sheetWrapEl) dom.sheetWrapEl.innerHTML = `<div class="empty">${I18N.EMPTY_NO_DISPLAYABLE_SHEETS}</div>`;
   if (statusMessage) setStatus(statusMessage);
 }
 
@@ -161,15 +162,15 @@ export async function loadDatabaseFromArrayBuffer(buffer, label, options = {}) {
     state.redoStack.length = 0;
     renderTabs();
     if (state.currentSheet) renderSheet(state.currentSheet);
-    else if (dom.sheetWrapEl) dom.sheetWrapEl.innerHTML = '<div class="empty">Die Datenbank enthält keine darstellbaren Blätter.</div>';
+    else if (dom.sheetWrapEl) dom.sheetWrapEl.innerHTML = `<div class="empty">${I18N.EMPTY_NO_DISPLAYABLE_SHEETS}</div>`;
     if (dom.nameBox) dom.nameBox.textContent = '-';
     if (dom.formulaBox) { dom.formulaBox.value = '-'; dom.formulaBox.disabled = true; }
-    setStatus(`${label} geladen · ${data.cells.length} Zellen · ${state.workbook.size} Blatt/Blätter`);
+    setStatus(I18N.LOAD_SUCCESS({ label, cells: data.cells.length, sheets: state.workbook.size }));
   } catch (error) {
     console.error(error);
     resetWorkbookState();
     renderTabs();
-    if (dom.sheetWrapEl) dom.sheetWrapEl.innerHTML = `<div class="empty">Fehler beim Laden: ${escapeHtml(error.message || String(error))}</div>`;
+    if (dom.sheetWrapEl) dom.sheetWrapEl.innerHTML = `<div class="empty">${I18N.LOAD_ERROR_PREFIX} ${escapeHtml(error.message || String(error))}</div>`;
     if (dom.formulaBox) { dom.formulaBox.value = '-'; dom.formulaBox.disabled = true; }
     setStatus(error.message || String(error), true);
   }
@@ -177,14 +178,14 @@ export async function loadDatabaseFromArrayBuffer(buffer, label, options = {}) {
 
 export async function saveDatabaseToFile() {
   try {
-    if (!state.db) throw new Error('Es ist keine Datenbank geladen.');
+    if (!state.db) throw new Error(I18N.NO_DATABASE_LOADED);
     const bytes = Array.from(state.db.export());
     if (isElectron()) {
       const result = await window.sqlspreadFS.saveDatabase({ path: state.currentDbPath, filename: state.currentDbName || 'database.sqlite', data: bytes });
-      if (!result || result.canceled) { setStatus('Speichern abgebrochen'); return; }
+      if (!result || result.canceled) { setStatus(I18N.SAVE_CANCELED); return; }
       state.currentDbPath = result.path || state.currentDbPath;
       state.currentDbName = result.name || state.currentDbName;
-      setStatus(`${state.currentDbName} gespeichert`);
+      setStatus(I18N.SAVE_SUCCESS(state.currentDbName));
       return;
     }
     const blob = new Blob([new Uint8Array(bytes)], { type: 'application/octet-stream' });
@@ -196,7 +197,7 @@ export async function saveDatabaseToFile() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    setStatus(`${state.currentDbName || 'database.sqlite'} gespeichert`);
+    setStatus(I18N.SAVE_SUCCESS(state.currentDbName || 'database.sqlite'));
   } catch (error) {
     console.error(error);
     setStatus(error.message || String(error), true);

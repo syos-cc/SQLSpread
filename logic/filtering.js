@@ -3,6 +3,7 @@ import { cellDisplayValue, getFrozenColumns, getFrozenRowNumbers, isFrozenColumn
 import { compareCellValues } from './sorting.js';
 import { saveUiStateToConfig } from '../db.js';
 import { renderSheet } from '../render/render-sheet.js';
+import { I18N } from '../i18n.js';
 
 export function sanitizeSheetUiState(sheetName, sheet) {
   if (!sheetName || !sheet) return;
@@ -42,7 +43,7 @@ export function getCellFilterValue(cell) {
   if (displayValue === null || displayValue === undefined) return '';
   return String(displayValue);
 }
-export function getFilterValueLabel(value) { return value === '' ? '(Leer)' : value; }
+export function getFilterValueLabel(value) { return value === '' ? I18N.FILTER_EMPTY : value; }
 
 export function getColumnDistinctFilterValues(sheet, col) {
   const rowNums = [...sheet.rows].sort((a, b) => a - b).filter(rowNum => !isFrozenRow(sheet.rowDefs.get(rowNum) || {}));
@@ -108,16 +109,16 @@ export function openFilterMenu(sheetName, col, anchorX, anchorY) {
   const activeValues = getColumnFilterValues(sheetName, col);
   const selectedValues = new Set(activeValues || distinctValues.map(item => item.value));
   dom.filterMenu.innerHTML = `
-    <div class="filter-menu-header">Filter: ${col}</div>
+    <div class="filter-menu-header">${I18N.FILTER_HEADER(col)}</div>
     <div class="filter-menu-actions">
-      <button type="button" class="filter-menu-btn" data-filter-action="select-all">Alle</button>
-      <button type="button" class="filter-menu-btn" data-filter-action="clear-all">Keine</button>
-      <button type="button" class="filter-menu-btn" data-filter-action="reset">Zurücksetzen</button>
+      <button type="button" class="filter-menu-btn" data-filter-action="select-all">${I18N.FILTER_ALL}</button>
+      <button type="button" class="filter-menu-btn" data-filter-action="clear-all">${I18N.FILTER_NONE}</button>
+      <button type="button" class="filter-menu-btn" data-filter-action="reset">${I18N.FILTER_RESET}</button>
     </div>
     <div class="filter-menu-list"></div>
     <div class="filter-menu-footer">
-      <button type="button" class="filter-menu-btn" data-filter-action="apply">Anwenden</button>
-      <button type="button" class="filter-menu-btn" data-filter-action="cancel">Schließen</button>
+      <button type="button" class="filter-menu-btn" data-filter-action="apply">${I18N.FILTER_APPLY}</button>
+      <button type="button" class="filter-menu-btn" data-filter-action="cancel">${I18N.FILTER_CLOSE}</button>
     </div>`;
   const listEl = dom.filterMenu.querySelector('.filter-menu-list');
   for (const item of distinctValues) {

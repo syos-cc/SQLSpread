@@ -6,6 +6,9 @@ import { initTopbar } from './components/topbar.js';
 import { initFormulaBar } from './components/formula-bar.js';
 import { initTabs } from './components/tabs.js';
 import { initFilterMenuGlobalEvents } from './components/filter-menu.js';
+import { applyStaticTranslations } from './i18n.js';
+
+applyStaticTranslations();
 
 initTopbar();
 initFormulaBar();

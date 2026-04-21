@@ -1,15 +1,16 @@
 import { state } from '../state.js';
 import { reloadWorkbookFromDb, setStatus } from '../db.js';
+import { I18N } from '../i18n.js';
 
 export function setColumnWidthInDb(sheetName, col, widthPx) {
-  if (!state.db) throw new Error('Es ist keine Datenbank geladen.');
+  if (!state.db) throw new Error(I18N.NO_DATABASE_LOADED);
   const safeWidth = Math.max(30, Math.round(widthPx)) + 'px';
   state.db.run(`UPDATE parts SET width = ? WHERE tab = ? AND UPPER(part) = ?`, [safeWidth, sheetName, col]);
   return safeWidth;
 }
 
 export function setRowHeightInDb(sheetName, rowNum, heightPx) {
-  if (!state.db) throw new Error('Es ist keine Datenbank geladen.');
+  if (!state.db) throw new Error(I18N.NO_DATABASE_LOADED);
   const safeHeight = Math.max(20, Math.round(heightPx)) + 'px';
   state.db.run(`UPDATE lines SET height = ? WHERE tab = ? AND line = ?`, [safeHeight, sheetName, rowNum]);
   return safeHeight;
@@ -32,7 +33,7 @@ export function startColumnResize(event, col, th) {
   async function onMouseUp(upEvent) {
     document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp);
     document.body.classList.remove('col-resizing');
-    try { setColumnWidthInDb(state.currentSheet, col, Math.max(30, startWidth + (upEvent.clientX - startX))); await reloadWorkbookFromDb(`${state.currentDbName} geändert`); }
+    try { setColumnWidthInDb(state.currentSheet, col, Math.max(30, startWidth + (upEvent.clientX - startX))); await reloadWorkbookFromDb(I18N.STATUS_CHANGED(state.currentDbName)); }
     catch (error) { console.error(error); setStatus(error.message || String(error), true); await reloadWorkbookFromDb(); }
   }
   document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp);
@@ -51,7 +52,7 @@ export function startRowResize(event, rowNum, rowHeader) {
   async function onMouseUp(upEvent) {
     document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp);
     document.body.classList.remove('row-resizing');
-    try { setRowHeightInDb(state.currentSheet, rowNum, Math.max(20, startHeight + (upEvent.clientY - startY))); await reloadWorkbookFromDb(`${state.currentDbName} geändert`); }
+    try { setRowHeightInDb(state.currentSheet, rowNum, Math.max(20, startHeight + (upEvent.clientY - startY))); await reloadWorkbookFromDb(I18N.STATUS_CHANGED(state.currentDbName)); }
     catch (error) { console.error(error); setStatus(error.message || String(error), true); await reloadWorkbookFromDb(); }
   }
   document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp);

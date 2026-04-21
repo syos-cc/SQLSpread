@@ -1,6 +1,7 @@
 import { state, dom } from '../state.js';
 import { cellDisplayValue, getJsonDropdownOptions, getJsonDropdownSelected, isBooleanTrue, isCellEditable, isJsonDropdownCell } from '../utils.js';
 import { reloadWorkbookFromDb, setStatus } from '../db.js';
+import { I18N } from '../i18n.js';
 
 export function getCellRecord(sheetName, cellRef) {
   const match = /^([A-Z]+)(\d+)$/.exec(String(cellRef || ''));
@@ -28,17 +29,17 @@ export function getCellEditorValue(cell) {
 export function valuesEqualForHistory(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
 export function setCellValueInDb(sheetName, col, rowNum, rawValue) {
-  if (!state.db) throw new Error('Es ist keine Datenbank geladen.');
+  if (!state.db) throw new Error(I18N.NO_DATABASE_LOADED);
   const sheet = state.workbook.get(sheetName);
   const currentCell = sheet?.cells.get(`${col}|${rowNum}`) || null;
-  if (!currentCell) throw new Error('Zelle nicht gefunden.');
+  if (!currentCell) throw new Error(I18N.CELL_NOT_FOUND);
   const valueType = String(currentCell.value_type || 'TEXT').toUpperCase();
-  if (valueType === 'BLOB') throw new Error('BLOB-Zellen werden noch nicht unterstützt.');
+  if (valueType === 'BLOB') throw new Error(I18N.BLOB_NOT_SUPPORTED);
   if (valueType === 'JSON' && isJsonDropdownCell(currentCell)) {
     const obj = JSON.parse(JSON.stringify(currentCell.value ? (typeof currentCell.value === 'string' ? JSON.parse(currentCell.value) : currentCell.value) : {}));
     const options = Array.isArray(obj.options) ? obj.options.map(v => String(v)) : [''];
     const selectedValue = String(rawValue ?? '');
-    if (!options.includes(selectedValue)) throw new Error('Wert ist nicht in den Dropdown-Optionen enthalten.');
+    if (!options.includes(selectedValue)) throw new Error(I18N.DROPDOWN_VALUE_INVALID);
     const newObj = { ...obj, type: 'dropdown', selected: selectedValue, selectd: selectedValue, options };
     state.db.run(`UPDATE cells SET value = ? WHERE tab = ? AND part = ? AND line = ?`, [JSON.stringify(newObj), sheetName, col, rowNum]);
     return;
@@ -51,7 +52,7 @@ export function setCellValueInDb(sheetName, col, rowNum, rawValue) {
     if (rawValue === '') state.db.run(`UPDATE cells SET value = '' WHERE tab = ? AND part = ? AND line = ?`, [sheetName, col, rowNum]);
     else {
       const parsed = Number(rawValue);
-      if (!Number.isInteger(parsed)) throw new Error('Bitte eine gültige Ganzzahl eingeben.');
+      if (!Number.isInteger(parsed)) throw new Error(I18N.INVALID_INTEGER);
       state.db.run(`UPDATE cells SET value = ? WHERE tab = ? AND part = ? AND line = ?`, [String(parsed), sheetName, col, rowNum]);
     }
     return;
@@ -60,7 +61,7 @@ export function setCellValueInDb(sheetName, col, rowNum, rawValue) {
     if (rawValue === '') state.db.run(`UPDATE cells SET value = '' WHERE tab = ? AND part = ? AND line = ?`, [sheetName, col, rowNum]);
     else {
       const parsed = Number(String(rawValue).replace(',', '.'));
-      if (Number.isNaN(parsed)) throw new Error('Bitte eine gültige Zahl eingeben.');
+      if (Number.isNaN(parsed)) throw new Error(I18N.INVALID_NUMBER);
       state.db.run(`UPDATE cells SET value = ? WHERE tab = ? AND part = ? AND line = ?`, [String(parsed), sheetName, col, rowNum]);
     }
     return;
@@ -69,9 +70,9 @@ export function setCellValueInDb(sheetName, col, rowNum, rawValue) {
 }
 
 export async function applyCellValueChange(sheetName, col, rowNum, newValue, options = {}) {
-  const { recordHistory = true, statusMessage = `${state.currentDbName} geändert`, selectCellRef = true } = options;
+  const { recordHistory = true, statusMessage = I18N.STATUS_CHANGED(state.currentDbName), selectCellRef = true } = options;
   const meta = getCellRecord(sheetName, `${col}${rowNum}`);
-  if (!meta || !meta.cell) throw new Error('Zelle nicht gefunden.');
+  if (!meta || !meta.cell) throw new Error(I18N.CELL_NOT_FOUND);
   const oldValue = getCellEditorValue(meta.cell);
   if (valuesEqualForHistory(oldValue, newValue)) return false;
   setCellValueInDb(sheetName, col, rowNum, newValue);
@@ -86,18 +87,18 @@ export async function applyCellValueChange(sheetName, col, rowNum, newValue, opt
 
 export async function undoLastChange() {
   const entry = state.undoStack.pop();
-  if (!entry) return setStatus('Nichts zum Rückgängig machen');
+  if (!entry) return setStatus(I18N.NOTHING_TO_UNDO);
   try {
-    await applyCellValueChange(entry.sheetName, entry.col, entry.rowNum, entry.oldValue, { recordHistory: false, statusMessage: `${state.currentDbName} geändert (Rückgängig)` });
+    await applyCellValueChange(entry.sheetName, entry.col, entry.rowNum, entry.oldValue, { recordHistory: false, statusMessage: I18N.STATUS_CHANGED_UNDO(state.currentDbName) });
     state.redoStack.push(entry);
   } catch (error) { console.error(error); setStatus(error.message || String(error), true); await reloadWorkbookFromDb(); }
 }
 
 export async function redoLastChange() {
   const entry = state.redoStack.pop();
-  if (!entry) return setStatus('Nichts zum Wiederholen');
+  if (!entry) return setStatus(I18N.NOTHING_TO_REDO);
   try {
-    await applyCellValueChange(entry.sheetName, entry.col, entry.rowNum, entry.newValue, { recordHistory: false, statusMessage: `${state.currentDbName} geändert (Wiederholen)` });
+    await applyCellValueChange(entry.sheetName, entry.col, entry.rowNum, entry.newValue, { recordHistory: false, statusMessage: I18N.STATUS_CHANGED_REDO(state.currentDbName) });
     state.undoStack.push(entry);
   } catch (error) { console.error(error); setStatus(error.message || String(error), true); await reloadWorkbookFromDb(); }
 }
@@ -116,7 +117,7 @@ export async function toggleBooleanCell(td) {
   if (!td || td.dataset.editable !== 'true') return;
   const meta = getCellRecord(state.currentSheet, td.dataset.cell || '');
   if (!meta || !meta.cell || String(meta.cell.value_type || 'TEXT').toUpperCase() !== 'BOOLEAN') return;
-  try { await applyCellValueChange(state.currentSheet, meta.col, meta.rowNum, !isBooleanTrue(meta.cell.value), { statusMessage: `${state.currentDbName} geändert` }); }
+  try { await applyCellValueChange(state.currentSheet, meta.col, meta.rowNum, !isBooleanTrue(meta.cell.value), { statusMessage: I18N.STATUS_CHANGED(state.currentDbName) }); }
   catch (error) { console.error(error); setStatus(error.message || String(error), true); await reloadWorkbookFromDb(); }
 }
 
@@ -124,7 +125,7 @@ export async function updateJsonDropdownCell(td, selectedValue) {
   if (!td || td.dataset.editable !== 'true') return;
   const meta = getCellRecord(state.currentSheet, td.dataset.cell || '');
   if (!meta || !meta.cell) return;
-  try { await applyCellValueChange(state.currentSheet, meta.col, meta.rowNum, selectedValue, { statusMessage: `${state.currentDbName} geändert` }); }
+  try { await applyCellValueChange(state.currentSheet, meta.col, meta.rowNum, selectedValue, { statusMessage: I18N.STATUS_CHANGED(state.currentDbName) }); }
   catch (error) { console.error(error); setStatus(error.message || String(error), true); await reloadWorkbookFromDb(); }
 }
 
@@ -139,15 +140,15 @@ export function focusCellByRef(cellRef) {
 export async function clearSelectedCellValue() {
   const meta = getSelectedCellMeta();
   if (!meta || !meta.cell) return;
-  if (!isCellEditable(meta.cell, meta.rowDef, meta.colDef)) return setStatus('Diese Zelle ist nicht editierbar.', true);
+  if (!isCellEditable(meta.cell, meta.rowDef, meta.colDef)) return setStatus(I18N.CELL_NOT_EDITABLE, true);
   const valueType = String(meta.cell.value_type || 'TEXT').toUpperCase();
   let clearedValue = '';
   if (valueType === 'BOOLEAN') clearedValue = false;
   else if (valueType === 'JSON' && isJsonDropdownCell(meta.cell)) {
     const options = getJsonDropdownOptions(meta.cell);
-    if (options.includes('')) clearedValue = ''; else throw new Error('Diese Dropdown-Zelle kann nicht geleert werden.');
+    if (options.includes('')) clearedValue = ''; else throw new Error(I18N.DROPDOWN_CANNOT_CLEAR);
   }
-  try { await applyCellValueChange(state.currentSheet, meta.col, meta.rowNum, clearedValue, { statusMessage: `${state.currentDbName} geändert` }); }
+  try { await applyCellValueChange(state.currentSheet, meta.col, meta.rowNum, clearedValue, { statusMessage: I18N.STATUS_CHANGED(state.currentDbName) }); }
   catch (error) { console.error(error); setStatus(error.message || String(error), true); await reloadWorkbookFromDb(); }
 }
 
@@ -202,7 +203,7 @@ export function activateCellEditor(td) {
       if (updatedTd) selectCell(updatedTd);
       return;
     }
-    try { await applyCellValueChange(state.currentSheet, meta.col, meta.rowNum, newValue, { statusMessage: `${state.currentDbName} geändert` }); }
+    try { await applyCellValueChange(state.currentSheet, meta.col, meta.rowNum, newValue, { statusMessage: I18N.STATUS_CHANGED(state.currentDbName) }); }
     catch (error) { console.error(error); setStatus(error.message || String(error), true); await reloadWorkbookFromDb(); }
   };
   input.addEventListener('keydown', async event => {
@@ -216,15 +217,15 @@ export function activateCellEditor(td) {
 export async function saveFormulaBoxToSelectedCell() {
   const meta = getSelectedCellMeta();
   if (!meta || !meta.cell || !dom.formulaBox) return;
-  if (!isCellEditable(meta.cell, meta.rowDef, meta.colDef)) { setStatus('Diese Zelle ist nicht editierbar.', true); dom.formulaBox.disabled = true; return; }
+  if (!isCellEditable(meta.cell, meta.rowDef, meta.colDef)) { setStatus(I18N.CELL_NOT_EDITABLE, true); dom.formulaBox.disabled = true; return; }
   const valueType = String(meta.cell.value_type || 'TEXT').toUpperCase();
   try {
     if (valueType === 'BOOLEAN') {
       const raw = String(dom.formulaBox.value || '').trim().toLowerCase();
       const boolValue = raw === 'true' || raw === '1' || raw === 'ja' || raw === 'yes' || raw === 'on';
-      await applyCellValueChange(state.currentSheet, meta.col, meta.rowNum, boolValue, { statusMessage: `${state.currentDbName} geändert` });
+      await applyCellValueChange(state.currentSheet, meta.col, meta.rowNum, boolValue, { statusMessage: I18N.STATUS_CHANGED(state.currentDbName) });
     } else {
-      await applyCellValueChange(state.currentSheet, meta.col, meta.rowNum, dom.formulaBox.value, { statusMessage: `${state.currentDbName} geändert` });
+      await applyCellValueChange(state.currentSheet, meta.col, meta.rowNum, dom.formulaBox.value, { statusMessage: I18N.STATUS_CHANGED(state.currentDbName) });
     }
   } catch (error) { console.error(error); setStatus(error.message || String(error), true); await reloadWorkbookFromDb(); }
 }

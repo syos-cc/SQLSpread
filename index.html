@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,10 +8,10 @@
 </head>
 <body>
   <div class="topbar">
-    <label for="dbFile" class="file-label" id="openDbLabel">SQLite-Datei auswählen</label>
+    <label for="dbFile" class="file-label" id="openDbLabel">Select SQLite file</label>
     <input type="file" id="dbFile" accept=".sqlite,.db,.sqlite3,.db3,.bin,.dat,.sqlspread" />
-    <button class="btn" id="saveBtn" type="button">Datenbank speichern</button>
-    <div id="status" class="status">Keine Datei geladen</div>
+    <button class="btn" id="saveBtn" type="button">Save database</button>
+    <div id="status" class="status">No file loaded</div>
   </div>
 
   <div class="formula-bar">
@@ -22,8 +22,8 @@
   <div class="main">
     <div class="sheet-wrap" id="sheetWrap">
       <div class="empty">
-        SQLite-Datei laden. Erwartet werden die Tabellen <code>tabs</code>, <code>lines</code>, <code>parts</code> und <code>cells</code>.
-        <div class="muted">Tabs = <code>name</code>, Spalten = <code>part</code>, Zeilen = <code>line</code>.</div>
+        Load a SQLite file. Expected tables: <code>tabs</code>, <code>lines</code>, <code>parts</code>, and <code>cells</code>.
+        <div class="muted">Tabs = <code>name</code>, columns = <code>part</code>, rows = <code>line</code>.</div>
       </div>
     </div>
     <div class="tabs" id="tabs"></div>

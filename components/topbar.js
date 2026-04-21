@@ -1,13 +1,14 @@
 import { dom } from '../state.js';
 import { loadDatabaseFromArrayBuffer, saveDatabaseToFile, setStatus } from '../db.js';
 import { isElectron } from '../utils.js';
+import { I18N } from '../i18n.js';
 
 export function initTopbar() {
   if (dom.dbFileInput) {
     dom.dbFileInput.addEventListener('change', async event => {
       const file = event.target.files?.[0];
       if (!file) return;
-      setStatus(`Lade ${file.name} ...`);
+      setStatus(I18N.LOADING_FILE(file.name));
       const buffer = await file.arrayBuffer();
       await loadDatabaseFromArrayBuffer(buffer, file.name, { name: file.name });
     });
