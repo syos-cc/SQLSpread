@@ -1,6 +1,6 @@
 {
   "name": "sqlspread",
-  "version": "1.0.4",
+  "version": "2.0.7",
   "description": "sqlite db like spreadsheet",
   "keywords": [
     "sqlite",
