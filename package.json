@@ -1,6 +1,6 @@
 {
   "name": "sqlspread",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "description": "sqlite db like spreadsheet",
   "keywords": [
     "sqlite",
@@ -29,11 +29,16 @@
     "files": [
       "index.html",
       "styles.css",
-      "sqlspread.js",
+      "db.js",
+      "i18n.js",
       "main.js",
       "preload.js",
       "sql-wasm.js",
+      "sqlspread-app.js",
+      "state.js",
+      "utils.js",
       "sql-wasm.wasm",
+      "package-lock.json",
       "package.json"
     ],
     "mac": {
